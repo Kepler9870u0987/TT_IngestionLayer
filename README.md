@@ -449,9 +449,9 @@ See [OAuth2 Setup Guide](docs/OAUTH2_SETUP.md) for security best practices.
 |-------|--------|-------------|
 | Phase 1: Infrastructure | ✅ Complete | Redis, Config, Logging, Tests |
 | Phase 2: Producer OAuth2+IMAP | ✅ Complete | Email fetching, State mgmt |
-| Phase 3: Worker+Idempotency | ⏸️ Next | Consumer groups, DLQ, Tests |
-| Phase 4: Robustness | ⏸️ Planned | Load tests, Health checks, Graceful shutdown |
-| Phase 5: Observability | ⏸️ Planned | Prometheus, Grafana, Ops tools |
+| Phase 3: Worker+Idempotency | ✅ Complete | Consumer groups, DLQ, Tests |
+| Phase 4: Robustness | ✅ Complete | Load tests, Health checks, Graceful shutdown |
+| Phase 5: Observability | ✅ Complete | Prometheus, Grafana, Ops tools |
 
 See [PROGRESS.md](PROGRESS.md) for detailed task breakdown.
 
