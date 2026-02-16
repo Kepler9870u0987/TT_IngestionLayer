@@ -81,6 +81,27 @@ class MonitoringSettings(BaseSettings):
         env_prefix = ""
 
 
+class CircuitBreakerSettings(BaseSettings):
+    """Circuit breaker configuration"""
+    failure_threshold: int = Field(default=5)
+    recovery_timeout_seconds: float = Field(default=60.0)
+    success_threshold: int = Field(default=3)
+
+    class Config:
+        env_prefix = "CB_"
+
+
+class RecoverySettings(BaseSettings):
+    """Orphaned message recovery configuration"""
+    min_idle_ms: int = Field(default=300000)
+    max_claim_count: int = Field(default=50)
+    max_delivery_count: int = Field(default=10)
+    check_interval_seconds: int = Field(default=60)
+
+    class Config:
+        env_prefix = "RECOVERY_"
+
+
 class LoggingSettings(BaseSettings):
     """Logging configuration"""
     level: str = Field(default="INFO")
@@ -99,6 +120,8 @@ class Settings(BaseSettings):
     idempotency: IdempotencySettings = IdempotencySettings()
     dlq: DLQSettings = DLQSettings()
     monitoring: MonitoringSettings = MonitoringSettings()
+    circuit_breaker: CircuitBreakerSettings = CircuitBreakerSettings()
+    recovery: RecoverySettings = RecoverySettings()
     logging: LoggingSettings = LoggingSettings()
 
     class Config:

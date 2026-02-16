@@ -2,10 +2,10 @@
 """
 Email Producer - IMAP to Redis Streams
 Fetches emails from Gmail via IMAP and pushes to Redis Streams.
+Integrated with Phase 4: shutdown manager, circuit breaker, health checks, correlation IDs.
 """
 import sys
 import time
-import signal
 import argparse
 from typing import Optional
 from datetime import datetime
@@ -22,25 +22,16 @@ from src.common.exceptions import (
     StateManagementError,
     RedisConnectionError
 )
+from src.common.shutdown import ShutdownManager
+from src.common.correlation import CorrelationContext, set_component
+from src.common.circuit_breaker import CircuitBreakers, CircuitBreakerError
+from src.common.health import HealthServer, HealthRegistry, HealthCheck
+from src.worker.recovery import ConnectionWatchdog
 
 logger = setup_logging(__name__, level=settings.logging.level)
 
-# Global flag for graceful shutdown
-running = True
-
-
-def signal_handler(signum, frame):
-    """Handle shutdown signals (SIGINT, SIGTERM)"""
-    global running
-    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-    running = False
-
-
-def setup_signal_handlers():
-    """Register signal handlers for graceful shutdown"""
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    logger.info("Signal handlers registered")
+# Set component name for logging
+set_component("producer")
 
 
 class EmailProducer:
@@ -82,6 +73,23 @@ class EmailProducer:
 
         self.stream_name = settings.redis.stream_name
         self.max_stream_length = settings.redis.max_stream_length
+
+        # Circuit breakers
+        self.redis_cb = CircuitBreakers.get(
+            "redis",
+            failure_threshold=settings.circuit_breaker.failure_threshold,
+            recovery_timeout=settings.circuit_breaker.recovery_timeout_seconds,
+            success_threshold=settings.circuit_breaker.success_threshold
+        )
+        self.imap_cb = CircuitBreakers.get(
+            "imap",
+            failure_threshold=settings.circuit_breaker.failure_threshold,
+            recovery_timeout=settings.circuit_breaker.recovery_timeout_seconds,
+            success_threshold=settings.circuit_breaker.success_threshold
+        )
+
+        # Shutdown manager
+        self.shutdown = ShutdownManager()
 
         logger.info(f"Producer initialized for {username}/{mailbox}")
 
@@ -205,46 +213,118 @@ class EmailProducer:
             state = self.state_manager.get_state_summary(self.mailbox)
             logger.info(f"Initial state: {state}")
 
+            # Setup health checks
+            health_registry = HealthRegistry("producer")
+            health_registry.register_check(
+                HealthCheck("redis", lambda: self.redis_client.ping(), critical=True)
+            )
+            health_registry.register_stats_provider(
+                "producer",
+                lambda: {"poll_count": poll_count, "total_processed": total_processed}
+            )
+            health_server = HealthServer(
+                health_registry,
+                port=settings.monitoring.health_check_port
+            )
+            health_server.start()
+
+            # Setup connection watchdog
+            watchdog = ConnectionWatchdog(check_interval=30)
+            watchdog.add_check("redis", lambda: self.redis_client.ping())
+            watchdog.start()
+
+            # Register shutdown callbacks
+            self.shutdown.register(
+                lambda: setattr(self, '_stop_flag', True),
+                priority=0, name="stop_accepting"
+            )
+            self.shutdown.register(
+                lambda: health_server.stop(),
+                priority=5, name="health_server"
+            )
+            self.shutdown.register(
+                lambda: watchdog.stop(),
+                priority=5, name="watchdog"
+            )
+            self.shutdown.register(
+                lambda: self.cleanup(),
+                priority=30, name="cleanup_resources"
+            )
+
             # Main loop
             poll_count = 0
             total_processed = 0
 
-            while running:
+            while self.shutdown.is_running:
                 poll_count += 1
-                logger.info(f"\n--- Poll #{poll_count} at {datetime.utcnow().isoformat()}Z ---")
 
-                try:
-                    if dry_run:
-                        logger.info("DRY RUN: Would fetch and push emails")
-                        time.sleep(self.poll_interval)
-                        continue
+                # Each poll gets a unique correlation ID for tracing
+                with CorrelationContext() as ctx:
+                    logger.info(
+                        f"--- Poll #{poll_count} at "
+                        f"{datetime.utcnow().isoformat()}Z ---"
+                    )
 
-                    # Fetch and push emails
-                    count = self.fetch_and_push_emails()
-                    total_processed += count
+                    try:
+                        if dry_run:
+                            logger.info("DRY RUN: Would fetch and push emails")
+                            time.sleep(self.poll_interval)
+                            continue
 
-                    if count > 0:
-                        logger.info(f"Processed {count} emails (total: {total_processed})")
+                        # Check circuit breakers before operations
+                        if self.redis_cb.is_open:
+                            logger.warning(
+                                "Redis circuit breaker open, skipping poll"
+                            )
+                            time.sleep(5)
+                            continue
 
-                except IMAPConnectionError as e:
-                    logger.error(f"IMAP error: {e}. Reconnecting on next poll...")
-                    if self.imap_client:
-                        self.imap_client.disconnect()
-                        self.imap_client = None
+                        if self.imap_cb.is_open:
+                            logger.warning(
+                                "IMAP circuit breaker open, skipping poll"
+                            )
+                            time.sleep(5)
+                            continue
 
-                except StateManagementError as e:
-                    logger.error(f"State management error: {e}")
+                        # Fetch and push emails
+                        count = self.fetch_and_push_emails()
+                        total_processed += count
 
-                except RedisConnectionError as e:
-                    logger.error(f"Redis error: {e}. Will retry...")
+                        # Record success on circuit breakers
+                        self.redis_cb.record_success()
+                        self.imap_cb.record_success()
 
-                except Exception as e:
-                    logger.error(f"Unexpected error: {e}", exc_info=True)
+                        if count > 0:
+                            logger.info(
+                                f"Processed {count} emails "
+                                f"(total: {total_processed})"
+                            )
 
-                # Sleep until next poll
+                    except IMAPConnectionError as e:
+                        logger.error(f"IMAP error: {e}. Reconnecting on next poll...")
+                        self.imap_cb.record_failure(e)
+                        if self.imap_client:
+                            self.imap_client.disconnect()
+                            self.imap_client = None
+
+                    except StateManagementError as e:
+                        logger.error(f"State management error: {e}")
+
+                    except RedisConnectionError as e:
+                        logger.error(f"Redis error: {e}. Will retry...")
+                        self.redis_cb.record_failure(e)
+
+                    except CircuitBreakerError as e:
+                        logger.warning(f"Circuit breaker: {e}")
+                        time.sleep(e.retry_after)
+
+                    except Exception as e:
+                        logger.error(f"Unexpected error: {e}", exc_info=True)
+
+                # Sleep until next poll (interruptible)
                 logger.debug(f"Sleeping for {self.poll_interval}s...")
                 for _ in range(self.poll_interval):
-                    if not running:
+                    if not self.shutdown.is_running:
                         break
                     time.sleep(1)
 
@@ -332,8 +412,9 @@ def main():
                 logger.error("Username required. Use --username or set IMAP_USER env var")
                 return 1
 
-    # Setup signal handlers
-    setup_signal_handlers()
+    # Setup shutdown manager (replaces old signal handlers)
+    shutdown = ShutdownManager()
+    shutdown.install_signal_handlers()
 
     # Create and run producer
     try:

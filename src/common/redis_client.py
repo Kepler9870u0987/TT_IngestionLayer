@@ -330,6 +330,82 @@ class RedisClient:
             logger.error(f"XLEN failed for stream {stream}: {e}")
             return 0
 
+    def xpending_range(
+        self,
+        stream: str,
+        groupname: str,
+        min_id: str = "-",
+        max_id: str = "+",
+        count: int = 100,
+        consumername: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get pending messages details (messages read but not acknowledged).
+
+        Args:
+            stream: Stream name
+            groupname: Consumer group name
+            min_id: Minimum message ID
+            max_id: Maximum message ID
+            count: Maximum results to return
+            consumername: Filter by consumer (optional)
+
+        Returns:
+            List of pending message entries with id, consumer, idle time, delivery count
+        """
+        try:
+            result = self.client.xpending_range(
+                stream, groupname,
+                min=min_id, max=max_id, count=count,
+                consumername=consumername
+            )
+            return result or []
+        except Exception as e:
+            logger.error(f"XPENDING RANGE failed: {e}")
+            raise CustomRedisConnectionError(f"Failed to get pending messages: {e}")
+
+    def xclaim(
+        self,
+        stream: str,
+        groupname: str,
+        consumername: str,
+        min_idle_time: int,
+        message_ids: List[str]
+    ) -> List[Tuple[str, Dict[str, Any]]]:
+        """
+        Claim ownership of pending messages that have been idle too long.
+
+        Args:
+            stream: Stream name
+            groupname: Consumer group name
+            consumername: Consumer to claim messages for
+            min_idle_time: Minimum idle time in milliseconds
+            message_ids: Message IDs to claim
+
+        Returns:
+            List of (message_id, fields) tuples for claimed messages
+        """
+        try:
+            result = self.client.xclaim(
+                stream, groupname, consumername,
+                min_idle_time, message_ids
+            )
+            if result:
+                logger.info(f"XCLAIM: Claimed {len(result)} messages for {consumername}")
+            return result or []
+        except Exception as e:
+            logger.error(f"XCLAIM failed: {e}")
+            raise CustomRedisConnectionError(f"Failed to claim messages: {e}")
+
+    def pipeline(self):
+        """
+        Create a Redis pipeline for batching commands.
+
+        Returns:
+            Redis pipeline object
+        """
+        return self.client.pipeline()
+
     def __enter__(self):
         """Context manager entry"""
         return self
