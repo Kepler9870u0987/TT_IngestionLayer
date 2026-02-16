@@ -235,17 +235,112 @@ class EmailWorker:
     def run(self):
         """
         Main worker loop - consume and process messages.
+        Includes health server, connection watchdog, and orphan recovery.
         """
-        global running
-
         logger.info("Worker starting...")
 
         # Ensure consumer group exists
         self.ensure_consumer_group()
 
+        # Setup health checks
+        health_registry = HealthRegistry("worker")
+        health_registry.register_check(
+            HealthCheck("redis", lambda: self.redis.ping(), critical=True)
+        )
+        health_registry.register_stats_provider(
+            "worker", lambda: {
+                "processed": self.messages_processed,
+                "skipped": self.messages_skipped,
+                "failed": self.messages_failed,
+                "dlq": self.messages_dlq,
+                "recovered": self.messages_recovered,
+            }
+        )
+        health_server = HealthServer(
+            health_registry,
+            port=settings.monitoring.health_check_port
+        )
+        health_server.start()
+
+        # Setup connection watchdog
+        watchdog = ConnectionWatchdog(check_interval=30)
+        watchdog.add_check("redis", lambda: self.redis.ping())
+        watchdog.start()
+
+        # Register shutdown callbacks
+        self.shutdown.register(
+            lambda: health_server.stop(), priority=5, name="health_server"
+        )
+        self.shutdown.register(
+            lambda: watchdog.stop(), priority=5, name="watchdog"
+        )
+        self.shutdown.register(
+            lambda: self.redis.close(), priority=35, name="redis"
+        )
+
+        # Recover orphaned messages on startup
+        try:
+            claimed, expired = self.recovery.claim_orphaned_messages()
+            for msg_id, msg_data in claimed:
+                logger.info(f"Processing recovered message: {msg_id}")
+                success = self.process_message(msg_id, msg_data)
+                if success:
+                    self.redis.xack(
+                        self.stream_name, self.consumer_group, msg_id
+                    )
+                    self.messages_recovered += 1
+
+            # Send expired messages to DLQ
+            for msg_id in expired:
+                try:
+                    self.dlq.send_to_dlq(
+                        message_id=msg_id,
+                        original_data={"message_id": msg_id},
+                        error=Exception("Exceeded max delivery count"),
+                        retry_count=settings.recovery.max_delivery_count
+                    )
+                    self.redis.xack(
+                        self.stream_name, self.consumer_group, msg_id
+                    )
+                    self.messages_dlq += 1
+                except Exception as e:
+                    logger.error(f"Failed to DLQ expired message {msg_id}: {e}")
+
+        except Exception as e:
+            logger.warning(f"Orphan recovery failed (non-fatal): {e}")
+
         # Main processing loop
-        while running:
+        recovery_interval = settings.recovery.check_interval_seconds
+        last_recovery = time.time()
+
+        while self.shutdown.is_running:
             try:
+                # Check circuit breaker
+                if self.redis_cb.is_open:
+                    logger.warning(
+                        f"Redis circuit breaker open, waiting "
+                        f"{self.redis_cb.get_retry_after():.0f}s..."
+                    )
+                    time.sleep(5)
+                    continue
+
+                # Periodic orphan recovery
+                if time.time() - last_recovery >= recovery_interval:
+                    try:
+                        claimed, expired = self.recovery.claim_orphaned_messages()
+                        for msg_id, msg_data in claimed:
+                            success = self.process_message(msg_id, msg_data)
+                            if success:
+                                self.redis.xack(
+                                    self.stream_name,
+                                    self.consumer_group,
+                                    msg_id
+                                )
+                                self.messages_recovered += 1
+                        last_recovery = time.time()
+                    except Exception as e:
+                        logger.warning(f"Periodic recovery failed: {e}")
+
                 # Read messages from stream using consumer group
                 messages = self.redis.xreadgroup(
                     groupname=self.consumer_group,
@@ -256,12 +351,17 @@ class EmailWorker:
                 )
 
                 if not messages:
-                    # No messages available, continue waiting
+                    self.redis_cb.record_success()
                     continue
+
+                self.redis_cb.record_success()
 
                 # Process each message in the batch
                 for stream_name, stream_messages in messages:
                     for message_id, message_data in stream_messages:
+                        if not self.shutdown.is_running:
+                            break
+
                         logger.debug(f"Received message: {message_id}")
 
                         # Process message
@@ -276,9 +376,9 @@ class EmailWorker:
                             )
                             logger.debug(f"Acknowledged message: {message_id}")
                         else:
-                            # Don't ACK - will be retried later
                             logger.warning(
-                                f"Message not acknowledged (will retry): {message_id}"
+                                f"Message not acknowledged (will retry): "
+                                f"{message_id}"
                             )
 
                 # Log periodic stats
@@ -291,7 +391,12 @@ class EmailWorker:
 
             except RedisConnectionError as e:
                 logger.error(f"Redis connection error: {e}")
-                time.sleep(5)  # Wait before reconnecting
+                self.redis_cb.record_failure(e)
+                time.sleep(5)
+
+            except CircuitBreakerError as e:
+                logger.warning(f"Circuit breaker: {e}")
+                time.sleep(e.retry_after)
 
             except Exception as e:
                 logger.exception(f"Unexpected error in worker loop: {e}")
@@ -313,7 +418,8 @@ class EmailWorker:
             f"Processed: {self.messages_processed}, "
             f"Skipped (duplicates): {self.messages_skipped}, "
             f"Failed: {self.messages_failed}, "
-            f"DLQ: {self.messages_dlq}"
+            f"DLQ: {self.messages_dlq}, "
+            f"Recovered: {self.messages_recovered}"
         )
         
         processor_stats = self.processor.get_stats()
@@ -357,8 +463,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Setup signal handlers
-    setup_signal_handlers()
+    # Setup shutdown manager (replaces old signal handlers)
+    shutdown = ShutdownManager()
+    shutdown.install_signal_handlers()
 
     # Create and run worker
     worker = EmailWorker(

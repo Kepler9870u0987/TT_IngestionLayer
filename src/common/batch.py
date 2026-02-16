@@ -82,7 +82,7 @@ class BatchProducer:
 
         pipe = self.redis.pipeline()
         for fields in self._buffer:
-            pipe.xadd(
+            pipe.xadd(  # type: ignore[arg-type]
                 self.stream_name,
                 fields,
                 maxlen=self.maxlen,
