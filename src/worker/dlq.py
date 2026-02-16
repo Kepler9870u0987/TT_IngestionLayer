@@ -113,7 +113,7 @@ class DLQManager:
         try:
             length = self.redis.client.xlen(self.dlq_stream_name)
             logger.debug(f"DLQ length: {length}")
-            return length
+            return int(length)  # type: ignore
         except Exception as e:
             logger.error(f"Failed to get DLQ length: {e}")
             raise RedisConnectionError(f"DLQ length check failed: {e}")
@@ -137,9 +137,10 @@ class DLQManager:
                 min="-",
                 max="+",
                 count=count
-            )
-            logger.debug(f"Peeked {len(messages)} messages from DLQ")
-            return messages
+            )  # type: ignore
+            messages_list = list(messages)  # type: ignore
+            logger.debug(f"Peeked {len(messages_list)} messages from DLQ")
+            return messages_list
         except Exception as e:
             logger.error(f"Failed to peek DLQ: {e}")
             raise RedisConnectionError(f"DLQ peek failed: {e}")
@@ -159,7 +160,7 @@ class DLQManager:
         """
         try:
             result = self.redis.client.xdel(self.dlq_stream_name, dlq_entry_id)
-            if result > 0:
+            if int(result) > 0:  # type: ignore
                 logger.info(f"Removed entry from DLQ: {dlq_entry_id}")
                 return True
             else:
@@ -194,13 +195,13 @@ class DLQManager:
                 min=dlq_entry_id,
                 max=dlq_entry_id,
                 count=1
-            )
+            )  # type: ignore
             
             if not entries:
                 logger.warning(f"DLQ entry not found for reprocessing: {dlq_entry_id}")
                 return None
             
-            entry_id, entry_data = entries[0]
+            entry_id, entry_data = entries[0]  # type: ignore
             
             # Parse original data
             original_data = json.loads(entry_data.get("original_data", "{}"))
@@ -244,10 +245,10 @@ class DLQManager:
                 self.dlq_stream_name,
                 min="-",
                 max="+"
-            )
+            )  # type: ignore
             
             count = 0
-            for entry_id, _ in entries:
+            for entry_id, _ in entries:  # type: ignore
                 self.redis.client.xdel(self.dlq_stream_name, entry_id)
                 count += 1
             

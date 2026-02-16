@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 from config.settings import settings
-from src.common.redis_client import create_redis_client_from_config
+from src.common.redis_client import create_redis_client_from_config, RedisClient
 from src.common.logging_config import setup_logging
 from src.common.exceptions import (
     RedisConnectionError,
@@ -252,9 +252,9 @@ class EmailWorker:
                         # Acknowledge message if processed successfully
                         if success:
                             self.redis.xack(
-                                stream=self.stream_name,
-                                groupname=self.consumer_group,
-                                ids=message_id
+                                self.stream_name,
+                                self.consumer_group,
+                                message_id
                             )
                             logger.debug(f"Acknowledged message: {message_id}")
                         else:

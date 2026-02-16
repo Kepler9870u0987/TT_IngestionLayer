@@ -132,7 +132,7 @@ class IdempotencyManager:
         try:
             count = self.redis.client.scard(self._get_key())
             logger.debug(f"Processed messages count: {count}")
-            return count
+            return int(count)  # type: ignore
         except Exception as e:
             logger.error(f"Failed to get processed count: {e}")
             raise RedisConnectionError(f"Get count failed: {e}")
@@ -151,7 +151,7 @@ class IdempotencyManager:
         try:
             result = self.redis.client.delete(self._get_key())
             logger.warning("Cleared all processed message tracking")
-            return result > 0
+            return bool(result > 0)  # type: ignore
         except Exception as e:
             logger.error(f"Failed to clear processed messages: {e}")
             raise RedisConnectionError(f"Clear processed failed: {e}")
