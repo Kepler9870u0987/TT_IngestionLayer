@@ -288,16 +288,34 @@ Integration tests will test end-to-end flow:
 
 ## Monitoring & Health Checks (Phase 5)
 
-Planned metrics:
+### Metrics Exporter (Prometheus)
+- Start metrics server (default port 9090):
+   ```bash
+   python -m src.monitoring.metrics
+   ```
+- Counters/Histograms exposed (PromQL names):
+   - `email_ingestion_emails_produced_total`
+   - `email_ingestion_emails_processed_total`
+   - `email_ingestion_emails_failed_total`
+   - `email_ingestion_dlq_messages_total`
+   - `email_ingestion_backoff_retries_total`
+   - `email_ingestion_processing_latency_seconds` (histogram)
+   - `email_ingestion_imap_poll_duration_seconds` (histogram)
+   - `email_ingestion_stream_depth` (gauge)
 
-- `emails_ingested_total` - Counter of emails fetched
-- `imap_poll_duration_seconds` - Histogram of poll durations
-- `oauth2_token_refresh_total` - Counter of token refreshes
-- `uidvalidity_changes_total` - Counter of UID VALIDITY resets
+### Prometheus
+- Sample config: [config/prometheus.yml](config/prometheus.yml)
+- Verify scrape: open Prometheus targets UI and ensure `email_ingestion_metrics` is `UP`.
 
-Health check endpoint (Phase 4):
+### Grafana
+- Import dashboard: [config/grafana_dashboard.json](config/grafana_dashboard.json)
+- Datasource name expected: `Prometheus` (UID `PROMETHEUS_DS`).
+
+### Health Endpoints (Phase 4)
 ```bash
 curl http://localhost:8080/health
+curl http://localhost:8080/ready
+curl http://localhost:8080/status
 ```
 
 ---
