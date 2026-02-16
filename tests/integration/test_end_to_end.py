@@ -271,9 +271,9 @@ class TestEmailIngestionIntegration:
                     
                     # Acknowledge
                     redis_client.xack(
-                        stream=stream_name,
-                        groupname=consumer_group,
-                        ids=msg_id
+                        stream_name,
+                        consumer_group,
+                        msg_id
                     )
                     
                     processed_count += 1
