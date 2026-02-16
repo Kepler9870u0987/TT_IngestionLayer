@@ -1,0 +1,67 @@
+# Prometheus configuration for Email Ingestion System
+# See: https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+#
+# Place this file alongside your Prometheus binary or mount it into the
+# Prometheus container.  Example:
+#   docker run -d -p 9090:9090 \
+#     -v $(pwd)/config/prometheus.yml:/etc/prometheus/prometheus.yml \
+#     prom/prometheus
+
+global:
+  scrape_interval: 15s        # How often to scrape targets
+  evaluation_interval: 15s    # How often to evaluate rules
+  scrape_timeout: 10s         # Per-target scrape timeout
+
+  external_labels:
+    environment: "development"
+    system: "email_ingestion"
+
+# --------------------------------------------------------------------------
+# Scrape targets
+# --------------------------------------------------------------------------
+scrape_configs:
+
+  # ------------------------------------------------------------------
+  # Email Ingestion – Prometheus metrics endpoint (producer or worker)
+  # ------------------------------------------------------------------
+  - job_name: "email_ingestion_metrics"
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          component: "ingestion"
+
+    # The /metrics endpoint is served by prometheus_client on the same
+    # port (9090) as this Prometheus instance in dev.  In production the
+    # metrics server runs on the *application* host/container, so adjust
+    # the target accordingly.
+    metrics_path: /metrics
+    scheme: http
+
+  # ------------------------------------------------------------------
+  # Health-check endpoint (JSON, not Prometheus format) – optional
+  # Useful for blackbox probing via blackbox_exporter.
+  # ------------------------------------------------------------------
+  # - job_name: "email_ingestion_health"
+  #   metrics_path: /health
+  #   static_configs:
+  #     - targets: ["localhost:8080"]
+  #       labels:
+  #         component: "health"
+
+  # ------------------------------------------------------------------
+  # Multi-worker setup (uncomment & adjust when scaling)
+  # ------------------------------------------------------------------
+  # - job_name: "email_ingestion_worker_2"
+  #   static_configs:
+  #     - targets: ["worker2-host:9090"]
+  #       labels:
+  #         component: "worker"
+  #         instance_id: "worker_02"
+
+  # ------------------------------------------------------------------
+  # Redis exporter (optional – requires redis_exporter sidecar)
+  # https://github.com/oliver006/redis_exporter
+  # ------------------------------------------------------------------
+  # - job_name: "redis"
+  #   static_configs:
+  #     - targets: ["localhost:9121"]
