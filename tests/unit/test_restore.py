@@ -96,10 +96,10 @@ class TestValidateBackupFile:
 # -----------------------------------------------------------------------
 
 class TestLocateRedisRdb:
-    @patch("scripts.restore.redis")
-    def test_returns_path(self, mock_redis_mod, tmp_path):
+    @patch("redis.Redis")
+    def test_returns_path(self, mock_redis_cls, tmp_path):
         client = MagicMock()
-        mock_redis_mod.Redis.return_value = client
+        mock_redis_cls.return_value = client
         client.ping.return_value = True
         client.config_get.side_effect = lambda k: {
             "dir": {"dir": str(tmp_path)},
@@ -109,9 +109,9 @@ class TestLocateRedisRdb:
         result = locate_redis_rdb("localhost", 6379, None, 0)
         assert result == tmp_path / "dump.rdb"
 
-    @patch("scripts.restore.redis")
-    def test_returns_none_on_error(self, mock_redis_mod):
-        mock_redis_mod.Redis.side_effect = Exception("nope")
+    @patch("redis.Redis")
+    def test_returns_none_on_error(self, mock_redis_cls):
+        mock_redis_cls.side_effect = Exception("nope")
         result = locate_redis_rdb("localhost", 6379, None, 0)
         assert result is None
 
