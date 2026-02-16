@@ -1,0 +1,34 @@
+# Claude Code
+.claude/
+.claude-cache/
+.claude/tmp/
+.claude/temp/
+.claude/logs/
+.claude/sessions/
+.claude/history/
+
+# Claude SDK
+.claude-sdk/
+.claude_sdk/
+.claude-sdk-cache/
+.claude_sdk_cache/
+
+# File temporanei Claude
+claude.json
+claude.local.json
+claude.config.local.json
+
+# Agent / AI temp
+.ai/
+.ai-cache/
+.ai-temp/
+.ai-logs/
+
+# Cache generiche
+.cache/
+.tmp/
+temp/
+tmp/
+
+# VSCode Claude extension
+.vscode/claude*
