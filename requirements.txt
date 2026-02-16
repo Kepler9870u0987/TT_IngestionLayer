@@ -1,0 +1,12 @@
+redis>=5.0.0
+python-dotenv>=1.0.0
+tenacity>=8.2.0
+google-auth>=2.27.0
+google-auth-o
+
+authlib>=1.2.0
+google-auth-httplib2>=0.2.0
+imapclient>=3.0.0
+prometheus-client>=0.19.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
