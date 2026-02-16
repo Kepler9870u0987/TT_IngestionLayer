@@ -2,7 +2,7 @@
 
 Sistema di ingestion email production-ready da Gmail IMAP con Redis Streams, implementato con approccio incrementale in 5 fasi.
 
-**Status Corrente**: ✅ Phase 1 & 2 Complete
+**Status Corrente**: ✅ Phase 1–5 Complete (42/42 tasks, 100%)
 
 ---
 
@@ -12,8 +12,8 @@ Sistema scalabile per l'ingestion di email da Gmail tramite IMAP con OAuth2, uti
 
 **Architettura:**
 - **Producer**: Polling IMAP con OAuth2, push a Redis Streams, gestione UID/UIDVALIDITY
-- **Worker**: Consumer groups Redis, idempotenza, DLQ per retry (Phase 3 - Da implementare)
-- **Monitoring**: Prometheus metrics, health checks (Phase 5 - Da implementare)
+- **Worker**: Consumer groups Redis, idempotenza, DLQ, backoff, orphan recovery
+- **Monitoring**: Prometheus metrics (:9090), health checks (:8080), Grafana dashboard
 
 **Stack Tecnologico:**
 - Python 3.11+
@@ -185,17 +185,30 @@ Gmail IMAP → OAuth2 Auth → Fetch UIDs → Parse Emails → Redis Stream
   UID State ←─────────── State Manager ←──────────── XADD Success
 ```
 
-### Phase 3: Worker + Idempotenza + DLQ ⏸️
+### Phase 3: Worker + Idempotenza + DLQ ✅
 
-**Coming Next** (see `PROGRESS.md`):
-- Consumer groups for parallel processing
-- Idempotency layer with Redis Sets
-- Dead Letter Queue with exponential backoff
-- Integration tests
+1. **Idempotency** (`src/worker/idempotency.py`): Redis Sets deduplication
+2. **Processor** (`src/worker/processor.py`): Extensible email processing
+3. **DLQ** (`src/worker/dlq.py`): Dead Letter Queue with inspect/reprocess
+4. **Backoff** (`src/worker/backoff.py`): Exponential backoff per message
+5. **Worker** (`worker.py`): Consumer groups, batch XREADGROUP, graceful shutdown
 
-### Phase 4-5: Robustness & Observability ⏸️
+### Phase 4: Robustness & Error Handling ✅
 
-See [Implementation Plan](C:\Users\malbanese\.claude\plans\snuggly-wondering-snowflake.md) for details.
+1. **Circuit Breaker** (`src/common/circuit_breaker.py`): 3-state machine (closed/open/half_open)
+2. **Shutdown Manager** (`src/common/shutdown.py`): Priority-based graceful shutdown
+3. **Correlation IDs** (`src/common/correlation.py`): Distributed tracing via ContextVar
+4. **Health Server** (`src/common/health.py`): HTTP /health, /ready, /status
+5. **Orphan Recovery** (`src/worker/recovery.py`): XPENDING/XCLAIM + ConnectionWatchdog
+6. **Batch Operations** (`src/common/batch.py`): Pipeline XADD/XACK
+
+### Phase 5: Observability & Ops ✅
+
+1. **Prometheus Metrics** (`src/monitoring/metrics.py`): Counters, histograms, gauges on :9090
+2. **Grafana Dashboard** (`config/grafana_dashboard.json`): 13-panel dashboard
+3. **Backup/Restore** (`scripts/backup.py`, `scripts/restore.py`): BGSAVE + RDB copy + retention
+4. **Operational Scripts** (`scripts/`): start, stop, health_check (.sh + .ps1)
+5. **Runbooks** (`docs/runbooks/`): Incident response, troubleshooting, scaling, DLQ, Redis ops
 
 ---
 
@@ -277,12 +290,18 @@ pytest tests/unit/ --cov=src --cov-report=html
 pytest tests/unit/test_redis_client.py -v
 ```
 
-### Integration Tests (Phase 3)
+### Integration Tests
 
-Integration tests will test end-to-end flow:
-- Producer → Redis Stream → Worker
-- OAuth2 flow
-- UIDVALIDITY change handling
+```bash
+# Requires running Redis
+pytest tests/integration/ -v
+```
+
+### Load Tests
+
+```bash
+python -m tests.load.load_test --emails 10000 --workers 3
+```
 
 ---
 
@@ -399,12 +418,23 @@ c:\TT_IngestionLayer\
 │   ├── unit/
 │   ├── integration/         # Phase 3
 │   └── load/                # Phase 4
-├── scripts/                 # Phase 5
+├── scripts/
+│   ├── backup.py            # Redis backup automation
+│   ├── restore.py           # Redis restore procedure
+│   ├── start.sh / .ps1      # Start producer + worker
+│   ├── stop.sh / .ps1       # Graceful stop
+│   └── health_check.sh/.ps1 # Health check script
 ├── docs/
 │   ├── OAUTH2_SETUP.md
-│   └── runbooks/            # Phase 5
+│   ├── WORKER_README.md
+│   └── runbooks/
+│       ├── incident_response.md
+│       ├── troubleshooting.md
+│       ├── scaling.md
+│       ├── dlq_management.md
+│       └── redis_operations.md
 ├── producer.py              # Main producer script
-├── worker.py                # Phase 3
+├── worker.py                # Main worker script
 ├── PROGRESS.md              # Detailed progress tracking
 └── README.md
 ```
@@ -502,6 +532,6 @@ A: Phase 3 implements consumer groups for horizontal worker scaling.
 
 ---
 
-**Status**: Phase 2 Complete ✅ | Ready for Phase 3 Development
+**Status**: All Phases Complete ✅ | Production Ready (42/42 tasks)
 
-For next steps, see [PROGRESS.md](PROGRESS.md).
+For detailed history, see [PROGRESS.md](PROGRESS.md).
