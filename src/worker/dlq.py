@@ -82,7 +82,7 @@ class DLQManager:
             
             # Push to DLQ stream with maxlen trimming
             dlq_id = self.redis.xadd(
-                stream_name=self.dlq_stream_name,
+                stream=self.dlq_stream_name,
                 fields=dlq_entry,
                 maxlen=self.max_length,
                 approximate=True
@@ -212,7 +212,7 @@ class DLQManager:
             
             # Push back to main stream
             new_id = self.redis.xadd(
-                stream_name=target_stream,
+                stream=target_stream,
                 fields=original_data
             )
             

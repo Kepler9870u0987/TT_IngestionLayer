@@ -84,8 +84,12 @@ class EmailProcessor:
                 "result": result
             }
             
+        except ProcessingError:
+            self.failed_count += 1
+            raise
         except Exception as e:
             self.failed_count += 1
+            message_id = message_data.get("message_id", "unknown")
             logger.error(f"Email processing failed: {e}")
             raise ProcessingError(f"Processing failed for {message_id}: {e}")
 

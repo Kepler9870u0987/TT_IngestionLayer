@@ -73,7 +73,13 @@ class EmailWorker:
         self.block_timeout_ms = block_timeout_ms
 
         # Initialize components
-        self.redis = create_redis_client_from_config()
+        from config.settings import settings as cfg
+        self.redis = RedisClient(
+            host=cfg.redis.host,
+            port=cfg.redis.port,
+            password=cfg.redis.password,
+            db=cfg.redis.db
+        )
         self.idempotency = create_idempotency_manager_from_config(
             self.redis,
             ttl_hours=settings.idempotency.ttl_seconds // 3600

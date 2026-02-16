@@ -39,6 +39,10 @@ class MessageProcessingError(BaseIngestionException):
     pass
 
 
+# Alias for backward compatibility
+ProcessingError = MessageProcessingError
+
+
 class StateManagementError(BaseIngestionException):
     """Error managing producer state (UID, UIDVALIDITY)"""
     pass
