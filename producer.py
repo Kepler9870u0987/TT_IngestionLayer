@@ -27,6 +27,11 @@ from src.common.correlation import CorrelationContext, set_component
 from src.common.circuit_breaker import CircuitBreakers, CircuitBreakerError
 from src.common.health import HealthServer, HealthRegistry, HealthCheck
 from src.worker.recovery import ConnectionWatchdog
+from src.monitoring.metrics import (
+    get_metrics_collector,
+    start_metrics_server,
+    BackgroundMetricsUpdater,
+)
 
 logger = setup_logging(__name__, level=settings.logging.level)
 
@@ -228,6 +233,16 @@ class EmailProducer:
             )
             health_server.start()
 
+            # Setup Prometheus metrics server
+            start_metrics_server(port=settings.monitoring.metrics_port)
+            metrics_updater = BackgroundMetricsUpdater(
+                collector=get_metrics_collector(),
+                redis_client=self.redis_client,
+                stream_name=self.stream_name,
+                dlq_stream_name=settings.dlq.stream_name,
+            )
+            metrics_updater.start()
+
             # Setup connection watchdog
             watchdog = ConnectionWatchdog(check_interval=30)
             watchdog.add_check("redis", lambda: self.redis_client.ping())
@@ -245,6 +260,10 @@ class EmailProducer:
             self.shutdown.register(
                 lambda: watchdog.stop(),
                 priority=5, name="watchdog"
+            )
+            self.shutdown.register(
+                lambda: metrics_updater.stop(),
+                priority=5, name="metrics_updater"
             )
             self.shutdown.register(
                 lambda: self.cleanup(),
@@ -287,8 +306,16 @@ class EmailProducer:
                             continue
 
                         # Fetch and push emails
+                        poll_start = time.time()
                         count = self.fetch_and_push_emails()
                         total_processed += count
+
+                        # Record metrics
+                        metrics = get_metrics_collector()
+                        metrics.observe_poll_duration(time.time() - poll_start)
+                        metrics.inc_imap_polls()
+                        if count > 0:
+                            metrics.inc_produced(count)
 
                         # Record success on circuit breakers
                         self.redis_cb.record_success()

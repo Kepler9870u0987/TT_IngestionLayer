@@ -27,6 +27,11 @@ from src.worker.backoff import create_backoff_manager_from_config
 from src.worker.dlq import create_dlq_manager_from_config
 from src.worker.processor import create_processor_from_config
 from src.worker.recovery import OrphanedMessageRecovery, ConnectionWatchdog
+from src.monitoring.metrics import (
+    get_metrics_collector,
+    start_metrics_server,
+    BackgroundMetricsUpdater,
+)
 
 logger = setup_logging(__name__, level=settings.logging.level)
 
@@ -162,10 +167,13 @@ class EmailWorker:
 
         # Wrap processing in correlation context
         with CorrelationContext() as ctx:
+            metrics = get_metrics_collector()
+
             # Check idempotency
             if self.idempotency.is_duplicate(email_id):
                 logger.info(f"Skipping duplicate message: {email_id}")
                 self.messages_skipped += 1
+                metrics.inc_duplicates()
                 return True
 
             # Check if should retry (backoff logic)
@@ -185,6 +193,7 @@ class EmailWorker:
                         retry_count=retry_count
                     )
                     self.messages_dlq += 1
+                    metrics.inc_dlq()
                     
                     # Mark as processed to not retry again
                     self.idempotency.mark_processed(email_id)
@@ -195,7 +204,9 @@ class EmailWorker:
 
             # Process the message
             try:
+                proc_start = time.time()
                 result = self.processor.process(message_data)
+                proc_elapsed = time.time() - proc_start
                 
                 # Mark as processed (idempotency)
                 self.idempotency.mark_processed(email_id)
@@ -203,10 +214,12 @@ class EmailWorker:
                 # Record success
                 self.backoff.record_success(email_id)
                 self.messages_processed += 1
+                metrics.inc_processed()
+                metrics.observe_processing_latency(proc_elapsed)
                 
                 logger.info(
                     f"Successfully processed: {email_id} "
-                    f"(time: {result.get('processing_time_seconds', 0):.3f}s)"
+                    f"(time: {proc_elapsed:.3f}s)"
                 )
                 return True
 
@@ -214,6 +227,8 @@ class EmailWorker:
                 # Processing failed, record for retry
                 retry_count = self.backoff.record_failure(email_id)
                 self.messages_failed += 1
+                metrics.inc_failed()
+                metrics.inc_retries()
                 
                 logger.error(
                     f"Processing failed for {email_id}: {e} "
@@ -225,6 +240,8 @@ class EmailWorker:
                 # Unexpected error
                 retry_count = self.backoff.record_failure(email_id)
                 self.messages_failed += 1
+                metrics.inc_failed()
+                metrics.inc_retries()
                 
                 logger.exception(
                     f"Unexpected error processing {email_id}: {e} "
@@ -262,6 +279,16 @@ class EmailWorker:
         )
         health_server.start()
 
+        # Setup Prometheus metrics server
+        start_metrics_server(port=settings.monitoring.metrics_port)
+        metrics_updater = BackgroundMetricsUpdater(
+            collector=get_metrics_collector(),
+            redis_client=self.redis,
+            stream_name=self.stream_name,
+            dlq_stream_name=settings.dlq.stream_name,
+        )
+        metrics_updater.start()
+
         # Setup connection watchdog
         watchdog = ConnectionWatchdog(check_interval=30)
         watchdog.add_check("redis", lambda: self.redis.ping())
@@ -275,12 +302,18 @@ class EmailWorker:
             lambda: watchdog.stop(), priority=5, name="watchdog"
         )
         self.shutdown.register(
+            lambda: metrics_updater.stop(), priority=5, name="metrics_updater"
+        )
+        self.shutdown.register(
             lambda: self.redis.close(), priority=35, name="redis"
         )
 
         # Recover orphaned messages on startup
         try:
             claimed, expired = self.recovery.claim_orphaned_messages()
+            recovery_metrics = get_metrics_collector()
+            if claimed:
+                recovery_metrics.inc_orphans_claimed(len(claimed))
             for msg_id, msg_data in claimed:
                 logger.info(f"Processing recovered message: {msg_id}")
                 success = self.process_message(msg_id, msg_data)
@@ -303,6 +336,7 @@ class EmailWorker:
                         self.stream_name, self.consumer_group, msg_id
                     )
                     self.messages_dlq += 1
+                    recovery_metrics.inc_dlq()
                 except Exception as e:
                     logger.error(f"Failed to DLQ expired message {msg_id}: {e}")
 
