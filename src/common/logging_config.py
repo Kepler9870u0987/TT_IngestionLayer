@@ -1,6 +1,6 @@
 """
 Structured logging configuration using JSON format.
-Provides consistent logging across all components.
+Provides consistent logging across all components with correlation ID support.
 """
 import logging
 import sys
@@ -8,12 +8,14 @@ import json
 from datetime import datetime
 from typing import Optional
 
+from src.common.correlation import CorrelationFilter
+
 
 class JSONFormatter(logging.Formatter):
-    """JSON formatter for structured logging"""
+    """JSON formatter for structured logging with correlation tracking"""
 
     def format(self, record: logging.LogRecord) -> str:
-        """Format log record as JSON"""
+        """Format log record as JSON with correlation and component fields"""
         log_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "level": record.levelname,
@@ -24,10 +26,17 @@ class JSONFormatter(logging.Formatter):
             "line": record.lineno
         }
 
-        # Add extra fields if present
-        if hasattr(record, 'correlation_id'):
-            log_data['correlation_id'] = record.correlation_id
+        # Add correlation ID if present (injected by CorrelationFilter)
+        correlation_id = getattr(record, 'correlation_id', None)
+        if correlation_id:
+            log_data['correlation_id'] = correlation_id
 
+        # Add component if present
+        component = getattr(record, 'component', None)
+        if component:
+            log_data['component'] = component
+
+        # Add email UID if present
         if hasattr(record, 'email_uid'):
             log_data['email_uid'] = record.email_uid
 
@@ -47,7 +56,7 @@ def setup_logging(name: str, level: str = "INFO") -> logging.Logger:
         level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
     Returns:
-        Configured logger instance
+        Configured logger instance with correlation filter
     """
     logger = logging.getLogger(name)
     logger.setLevel(getattr(logging, level.upper()))
@@ -60,6 +69,10 @@ def setup_logging(name: str, level: str = "INFO") -> logging.Logger:
     handler.setFormatter(JSONFormatter())
 
     logger.addHandler(handler)
+
+    # Add correlation filter for automatic correlation_id injection
+    if not any(isinstance(f, CorrelationFilter) for f in logger.filters):
+        logger.addFilter(CorrelationFilter())
 
     # Prevent propagation to root logger
     logger.propagate = False
@@ -76,7 +89,7 @@ def get_logger(name: str, level: Optional[str] = None) -> logging.Logger:
         level: Optional log level override
 
     Returns:
-        Logger instance
+        Logger instance with correlation filter
     """
     if level:
         return setup_logging(name, level)
@@ -85,5 +98,9 @@ def get_logger(name: str, level: Optional[str] = None) -> logging.Logger:
     logger = logging.getLogger(name)
     if not logger.handlers:
         return setup_logging(name, "INFO")
+
+    # Ensure correlation filter is attached
+    if not any(isinstance(f, CorrelationFilter) for f in logger.filters):
+        logger.addFilter(CorrelationFilter())
 
     return logger
