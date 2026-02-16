@@ -389,6 +389,122 @@
 
 ---
 
+### 2026-02-16 - Phase 4 Implementation Complete ✅
+
+**Added:**
+- `src/common/correlation.py` - Correlation ID management:
+  - UUID4 generation per distributed tracing
+  - ContextVar per thread/async-safe propagation
+  - CorrelationFilter per automatic injection in log records
+  - CorrelationContext context manager con scope & nesting
+- `src/common/shutdown.py` - Graceful shutdown manager:
+  - Singleton pattern con thread-safe __new__
+  - Priority-based callback execution (0-49)
+  - Signal handler installation (SIGINT/SIGTERM)
+  - Configurable timeout (default 30s)
+  - ShutdownState enum (RUNNING/SHUTTING_DOWN/STOPPED)
+  - wait_for_shutdown() per blocking threads
+- `src/common/circuit_breaker.py` - Circuit breaker pattern:
+  - 3-state machine: CLOSED → OPEN → HALF_OPEN → CLOSED
+  - Configurable thresholds (failure, recovery, success)
+  - Thread-safe con threading.Lock
+  - Decorator usage: @circuit_breaker
+  - CircuitBreakers registry per named instances
+  - Statistics tracking per monitoring
+- `src/common/health.py` - Health check HTTP server:
+  - Threaded HTTP server (daemon thread)
+  - GET /health - Liveness (always 200)
+  - GET /ready - Readiness (checks dependencies)
+  - GET /status - Full status con circuit breakers e stats
+  - HealthRegistry con check + stats providers
+  - Configurable port (default 8080)
+- `src/worker/recovery.py` - Edge case handling:
+  - OrphanedMessageRecovery: XPENDING/XCLAIM per crashed consumers
+  - ConnectionWatchdog: background health monitoring
+  - Automatic reconnection triggers
+  - Circuit breaker integration
+- `src/common/batch.py` - Performance tuning:
+  - BatchProducer: pipeline XADD for reduced round-trips
+  - BatchAcknowledger: pipeline XACK for batch acknowledgment
+  - Auto-flush on configurable batch_size
+  - Stats tracking per batch operations
+- `config/settings.py` updated:
+  - CircuitBreakerSettings (failure_threshold, recovery_timeout, success_threshold)
+  - RecoverySettings (min_idle_ms, max_claim_count, max_delivery_count)
+- `src/common/redis_client.py` updated:
+  - xpending_range() per pending message inspection
+  - xclaim() per claiming orphaned messages
+  - pipeline() per batch operations
+- `producer.py` refactored:
+  - ShutdownManager replaces global running flag
+  - CorrelationContext per poll for tracing
+  - Circuit breaker checks on Redis/IMAP
+  - Health server startup
+  - ConnectionWatchdog integration
+- `worker.py` refactored:
+  - ShutdownManager replaces global running flag
+  - CorrelationContext per message processing
+  - Circuit breaker on Redis operations
+  - OrphanedMessageRecovery on startup + periodic
+  - Health server with worker stats
+  - ConnectionWatchdog integration
+- `src/common/logging_config.py` updated:
+  - CorrelationFilter auto-attached to all loggers
+  - JSONFormatter includes correlation_id and component fields
+- Unit tests (89 tests, all passing):
+  - `tests/unit/test_circuit_breaker.py` - 17 tests
+  - `tests/unit/test_shutdown.py` - 12 tests
+  - `tests/unit/test_health.py` - 18 tests
+  - `tests/unit/test_correlation.py` - 14 tests
+  - `tests/unit/test_recovery.py` - 17 tests
+  - `tests/unit/test_batch.py` - 11 tests
+- `tests/load/load_test.py` - Load testing CLI:
+  - Configurable: --emails, --batch-size, --workers
+  - Produces fake emails → Redis Stream → Consumer
+  - Measures throughput, p50/p95/p99 latency
+  - Multi-worker support (threaded consumers)
+  - JSON output option
+
+**Files Created (12 total):**
+1. `src/common/correlation.py`
+2. `src/common/shutdown.py`
+3. `src/common/circuit_breaker.py`
+4. `src/common/health.py`
+5. `src/common/batch.py`
+6. `src/worker/recovery.py`
+7. `tests/unit/test_circuit_breaker.py`
+8. `tests/unit/test_shutdown.py`
+9. `tests/unit/test_health.py`
+10. `tests/unit/test_correlation.py`
+11. `tests/unit/test_recovery.py`
+12. `tests/unit/test_batch.py`
+13. `tests/load/load_test.py`
+
+**Files Modified (5 total):**
+1. `config/settings.py` - Added CircuitBreakerSettings, RecoverySettings
+2. `src/common/redis_client.py` - Added xpending_range, xclaim, pipeline
+3. `src/common/logging_config.py` - Added CorrelationFilter integration
+4. `producer.py` - Phase 4 integration (shutdown, circuit breaker, health, correlation)
+5. `worker.py` - Phase 4 integration (shutdown, circuit breaker, health, recovery, correlation)
+
+**Key Features:**
+- ✅ Circuit breaker pattern (3-state, thread-safe)
+- ✅ Graceful shutdown con ordered callbacks
+- ✅ HTTP health checks (/health, /ready, /status)
+- ✅ Correlation IDs per distributed tracing
+- ✅ Orphaned message recovery (XPENDING/XCLAIM)
+- ✅ Connection watchdog con auto-reconnection
+- ✅ Batch operations con Redis pipelines
+- ✅ 89 unit tests tutti passanti
+- ✅ Load testing CLI tool
+
+**Next Steps:**
+- Run load test: `python -m tests.load.load_test --emails 10000`
+- Test health endpoints: `curl http://localhost:8080/health`
+- **Procedere con Phase 5**: Observability, Prometheus metrics, Grafana dashboard
+
+---
+
 ## Next Steps Immediate
 
 1. **Setup Locale** (prima di passare a Phase 2):
@@ -439,11 +555,11 @@
 | Phase 1: Infrastructure | ✅ COMPLETATO | 100% (10/10) | Ready for Phase 2 |
 | Phase 2: Producer OAuth2+IMAP | ✅ COMPLETATO | 100% (9/9) | Ready for Phase 3 |
 | Phase 3: Worker+Idempotency+DLQ | ✅ COMPLETATO | 100% (8/8) | Ready for Phase 4 |
-| Phase 4: Robustezza & Testing | ⏸️ DA FARE | 0% (0/7) | Dipende da Phase 3 |
+| Phase 4: Robustezza & Testing | ✅ COMPLETATO | 100% (7/7) | Ready for Phase 5 |
 | Phase 5: Observability & Ops | ⏸️ DA FARE | 0% (0/8) | Dipende da Phase 4 |
 
-**Overall Progress: 64.3% (27/42 tasks)**
+**Overall Progress: 81.0% (34/42 tasks)**
 
 ---
 
-🎉 **Phase 3 Complete! Worker fully functional with idempotency, DLQ, and comprehensive tests.**
+🎉 **Phase 4 Complete! Production-ready resilience: circuit breaker, health checks, shutdown manager, correlation IDs, 89 tests.**

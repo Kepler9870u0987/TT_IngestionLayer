@@ -2,9 +2,15 @@
 Configuration management using Pydantic Settings.
 Loads configuration from environment variables with validation.
 """
+from pathlib import Path
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
+
+# Load .env file into os.environ so all nested BaseSettings pick up values
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(_env_path)
 
 
 class RedisSettings(BaseSettings):
@@ -113,20 +119,19 @@ class LoggingSettings(BaseSettings):
 
 class Settings(BaseSettings):
     """Main settings aggregating all configuration sections"""
-    redis: RedisSettings = RedisSettings()
-    imap: IMAPSettings = IMAPSettings()
-    oauth2: OAuth2Settings
-    worker: WorkerSettings = WorkerSettings()
-    idempotency: IdempotencySettings = IdempotencySettings()
-    dlq: DLQSettings = DLQSettings()
-    monitoring: MonitoringSettings = MonitoringSettings()
-    circuit_breaker: CircuitBreakerSettings = CircuitBreakerSettings()
-    recovery: RecoverySettings = RecoverySettings()
-    logging: LoggingSettings = LoggingSettings()
+    redis: RedisSettings = Field(default_factory=RedisSettings)
+    imap: IMAPSettings = Field(default_factory=IMAPSettings)
+    oauth2: OAuth2Settings = Field(default_factory=OAuth2Settings)
+    worker: WorkerSettings = Field(default_factory=WorkerSettings)
+    idempotency: IdempotencySettings = Field(default_factory=IdempotencySettings)
+    dlq: DLQSettings = Field(default_factory=DLQSettings)
+    monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
+    circuit_breaker: CircuitBreakerSettings = Field(default_factory=CircuitBreakerSettings)
+    recovery: RecoverySettings = Field(default_factory=RecoverySettings)
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
     class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 # Singleton instance - import this in other modules

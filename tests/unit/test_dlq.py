@@ -58,7 +58,7 @@ class TestDLQManager:
         
         # Verify xadd was called with correct parameters
         call_args = mock_redis.xadd.call_args
-        assert call_args[1]["stream_name"] == "test_dlq"
+        assert call_args[1]["stream"] == "test_dlq"
         
         fields = call_args[1]["fields"]
         assert fields["original_message_id"] == "email-123"
@@ -155,7 +155,7 @@ class TestDLQManager:
         
         # Verify message was reprocessed to main stream
         reprocess_call = mock_redis.xadd.call_args
-        assert reprocess_call[1]["stream_name"] == "email_ingestion_stream"
+        assert reprocess_call[1]["stream"] == "email_ingestion_stream"
         
         reprocessed_data = reprocess_call[1]["fields"]
         assert reprocessed_data["message_id"] == "email-123"

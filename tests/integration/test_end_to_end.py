@@ -56,7 +56,7 @@ class TestEmailIngestionIntegration:
             {
                 "message_id": "email-001",
                 "from": "sender1@example.com",
-                "to": ["recipient@example.com"],
+                "to": "recipient@example.com",
                 "subject": "Test Email 1",
                 "date": "2026-02-16T10:00:00Z",
                 "body_preview": "This is test email 1",
@@ -65,7 +65,7 @@ class TestEmailIngestionIntegration:
             {
                 "message_id": "email-002",
                 "from": "sender2@example.com",
-                "to": ["recipient@example.com"],
+                "to": "recipient@example.com",
                 "subject": "Test Email 2",
                 "date": "2026-02-16T10:01:00Z",
                 "body_preview": "This is test email 2",
@@ -74,7 +74,7 @@ class TestEmailIngestionIntegration:
             {
                 "message_id": "email-003",
                 "from": "sender3@example.com",
-                "to": ["recipient@example.com"],
+                "to": "recipient@example.com",
                 "subject": "Test Email 3",
                 "date": "2026-02-16T10:02:00Z",
                 "body_preview": "This is test email 3",
@@ -88,7 +88,7 @@ class TestEmailIngestionIntegration:
         message_ids = []
         for email in sample_emails:
             msg_id = redis_client.xadd(
-                stream_name=stream_name,
+                stream=stream_name,
                 fields=email,
                 maxlen=1000
             )
@@ -111,7 +111,7 @@ class TestEmailIngestionIntegration:
         """Test worker consuming messages from stream"""
         # Setup: Push messages to stream
         for email in sample_emails:
-            redis_client.xadd(stream_name=stream_name, fields=email)
+            redis_client.xadd(stream=stream_name, fields=email)
         
         # Create consumer group
         try:
@@ -151,7 +151,7 @@ class TestEmailIngestionIntegration:
         
         # Push test email
         email = sample_emails[0]
-        redis_client.xadd(stream_name=stream_name, fields=email)
+        redis_client.xadd(stream=stream_name, fields=email)
         
         # Create consumer group
         try:
@@ -234,7 +234,7 @@ class TestEmailIngestionIntegration:
         
         # 1. Producer: Push emails to stream
         for email in sample_emails[:2]:  # Use 2 emails for faster test
-            redis_client.xadd(stream_name=stream_name, fields=email)
+            redis_client.xadd(stream=stream_name, fields=email)
         
         # 2. Worker: Setup consumer group
         try:
@@ -321,7 +321,7 @@ class TestEmailIngestionIntegration:
         # Push test messages
         for i in range(10):
             redis_client.xadd(
-                stream_name=stream_name,
+                stream=stream_name,
                 fields={
                     "message_id": f"email-{i:03d}",
                     "from": "sender@example.com",
@@ -398,7 +398,7 @@ class TestEmailIngestionLoadTest:
         # Push messages
         for i in range(num_messages):
             redis_client.xadd(
-                stream_name=stream_name,
+                stream=stream_name,
                 fields={
                     "message_id": f"load-test-{i:06d}",
                     "from": f"sender{i}@example.com",
