@@ -84,9 +84,9 @@ def producer(mock_settings):
             batch_size=50,
             poll_interval=60
         )
-        p._mock_redis = mock_redis
-        p._mock_oauth = mock_oauth
-        p._mock_state = mock_state
+        p._mock_redis = mock_redis  # type: ignore[attr-defined]
+        p._mock_oauth = mock_oauth  # type: ignore[attr-defined]
+        p._mock_state = mock_state  # type: ignore[attr-defined]
         yield p
 
 

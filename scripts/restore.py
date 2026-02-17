@@ -85,8 +85,8 @@ def locate_redis_rdb(host: str, port: int, password: str | None, db: int) -> Pat
             decode_responses=True, socket_connect_timeout=5,
         )
         client.ping()
-        rdb_dir = client.config_get("dir").get("dir", ".")
-        rdb_name = client.config_get("dbfilename").get("dbfilename", "dump.rdb")
+        rdb_dir = client.config_get("dir").get("dir", ".")  # type: ignore[union-attr]
+        rdb_name = client.config_get("dbfilename").get("dbfilename", "dump.rdb")  # type: ignore[union-attr]
         return Path(rdb_dir) / rdb_name
     except Exception as exc:
         logger.error(f"Could not query Redis for RDB path: {exc}")

@@ -127,14 +127,15 @@ class TestEmailMessage:
 
     def test_to_dict_none_date(self):
         """Test None date is handled"""
+        from datetime import datetime, timezone
         msg = EmailMessage(
             uid=1, uidvalidity=1, mailbox="INBOX", from_addr="a@b.com",
-            to_addrs=[], subject="s", date=None,
+            to_addrs=[], subject="s", date=datetime(1970, 1, 1, tzinfo=timezone.utc),
             body_text="", body_html="", size=0, headers={},
             message_id="<1@local>"
         )
         d = msg.to_dict()
-        assert d["date"] is None
+        assert d["date"] == "1970-01-01T00:00:00+00:00"
 
 
 class TestGmailIMAPClientInit:

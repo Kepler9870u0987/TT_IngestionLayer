@@ -91,12 +91,12 @@ def worker(mock_settings):
             consumer_name="worker_01"
         )
         # Expose mocks for test assertions
-        w._mock_redis = mock_redis
-        w._mock_idemp = mock_idemp_inst
-        w._mock_backoff = mock_backoff_inst
-        w._mock_dlq = mock_dlq_inst
-        w._mock_proc = mock_proc_inst
-        w._mock_metrics = mock_metrics_inst
+        w._mock_redis = mock_redis  # type: ignore[attr-defined]
+        w._mock_idemp = mock_idemp_inst  # type: ignore[attr-defined]
+        w._mock_backoff = mock_backoff_inst  # type: ignore[attr-defined]
+        w._mock_dlq = mock_dlq_inst  # type: ignore[attr-defined]
+        w._mock_proc = mock_proc_inst  # type: ignore[attr-defined]
+        w._mock_metrics = mock_metrics_inst  # type: ignore[attr-defined]
         yield w
 
 
