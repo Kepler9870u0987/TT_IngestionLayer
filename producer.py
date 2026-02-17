@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
 Email Producer - IMAP to Redis Streams
-Fetches emails from Gmail via IMAP and pushes to Redis Streams.
+Fetches emails from Gmail or Outlook via IMAP and pushes to Redis Streams.
+Supports multiple email providers via EMAIL_PROVIDER env var or --provider CLI arg.
 Integrated with Phase 4: shutdown manager, circuit breaker, health checks, correlation IDs.
 """
 import sys
 import time
 import argparse
-from typing import Optional
+from typing import Optional, Union
 from datetime import datetime, timezone
 
 from config.settings import settings
 from src.auth.oauth2_gmail import create_oauth2_from_config
+from src.auth.oauth2_outlook import create_outlook_oauth2_from_config
 from src.imap.imap_client import create_imap_client_from_config, GmailIMAPClient
+from src.imap.outlook_imap_client import create_outlook_imap_client_from_config, OutlookIMAPClient
 from src.producer.state_manager import ProducerStateManager
 from src.common.redis_client import create_redis_client_from_config
 from src.common.logging_config import setup_logging
@@ -34,6 +37,8 @@ from src.monitoring.metrics import (
     BackgroundMetricsUpdater,
 )
 
+SUPPORTED_PROVIDERS = ("gmail", "outlook")
+
 logger = setup_logging(__name__, level=settings.logging.level)
 
 # Set component name for logging
@@ -48,37 +53,55 @@ class EmailProducer:
         username: str,
         mailbox: str = "INBOX",
         batch_size: int = 50,
-        poll_interval: int = 60
+        poll_interval: int = 60,
+        provider: str = "gmail",
     ):
         """
         Initialize email producer.
 
         Args:
-            username: Gmail email address
+            username: Email address (Gmail or Outlook)
             mailbox: Mailbox to monitor
             batch_size: Max emails to fetch per poll
             poll_interval: Seconds between polls
+            provider: Email provider ('gmail' or 'outlook')
         """
         self.username = username
         self.mailbox = mailbox
         self.batch_size = batch_size
         self.poll_interval = poll_interval
+        self.provider = provider.lower()
+
+        if self.provider not in SUPPORTED_PROVIDERS:
+            raise ValueError(
+                f"Unsupported email provider '{self.provider}'. "
+                f"Supported: {', '.join(SUPPORTED_PROVIDERS)}"
+            )
 
         # Initialize components
-        logger.info("Initializing producer components...")
+        logger.info(f"Initializing producer components (provider={self.provider})...")
 
         self.redis_client = create_redis_client_from_config(settings)
         logger.info("✓ Redis client initialized")
 
-        if not settings.oauth2.is_configured:
-            raise OAuth2AuthenticationError(
-                "OAuth2 not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET "
-                "in .env file. See docs/OAUTH2_SETUP.md for instructions."
-            )
-        self.oauth2 = create_oauth2_from_config(settings)
-        logger.info("✓ OAuth2 manager initialized")
+        # Provider-specific OAuth2 initialization
+        if self.provider == "outlook":
+            if not settings.outlook_oauth2.is_configured:
+                raise OAuth2AuthenticationError(
+                    "Outlook OAuth2 not configured. Set MICROSOFT_CLIENT_ID "
+                    "in .env file. See docs/OUTLOOK_OAUTH2_SETUP.md for instructions."
+                )
+            self.oauth2 = create_outlook_oauth2_from_config(settings)
+        else:
+            if not settings.oauth2.is_configured:
+                raise OAuth2AuthenticationError(
+                    "OAuth2 not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET "
+                    "in .env file. See docs/OAUTH2_SETUP.md for instructions."
+                )
+            self.oauth2 = create_oauth2_from_config(settings)
+        logger.info(f"✓ OAuth2 manager initialized ({self.provider})")
 
-        self.imap_client: Optional[GmailIMAPClient] = None
+        self.imap_client: Optional[Union[GmailIMAPClient, OutlookIMAPClient]] = None
         self.state_manager = ProducerStateManager(self.redis_client, username)
         logger.info("✓ State manager initialized")
 
@@ -129,9 +152,16 @@ class EmailProducer:
         Raises:
             Various exceptions if operations fail
         """
-        # Connect IMAP if needed
+        # Connect IMAP if needed (provider-aware)
         if not self.imap_client:
-            self.imap_client = create_imap_client_from_config(settings, self.oauth2)
+            if self.provider == "outlook":
+                self.imap_client = create_outlook_imap_client_from_config(
+                    settings, self.oauth2
+                )
+            else:
+                self.imap_client = create_imap_client_from_config(
+                    settings, self.oauth2
+                )
             self.imap_client.connect()
 
         # Select mailbox and get UIDVALIDITY
@@ -210,6 +240,7 @@ class EmailProducer:
         """
         logger.info("=" * 60)
         logger.info(f"Email Producer Starting")
+        logger.info(f"Provider: {self.provider}")
         logger.info(f"Username: {self.username}")
         logger.info(f"Mailbox: {self.mailbox}")
         logger.info(f"Poll interval: {self.poll_interval}s")
@@ -389,7 +420,12 @@ def main():
     parser = argparse.ArgumentParser(description="Email Producer - IMAP to Redis Streams")
     parser.add_argument(
         "--username",
-        help="Gmail email address (default: from config or IMAP_USER env var)"
+        help="Email address (default: from config or IMAP_USER env var)"
+    )
+    parser.add_argument(
+        "--provider",
+        choices=["gmail", "outlook"],
+        help="Email provider (default: from EMAIL_PROVIDER env var or 'gmail')"
     )
     parser.add_argument(
         "--mailbox",
@@ -420,17 +456,29 @@ def main():
 
     args = parser.parse_args()
 
+    # Determine provider
+    provider = args.provider or settings.email_provider
+
     # OAuth2 setup mode
     if args.auth_setup:
-        logger.info("Running OAuth2 setup...")
+        logger.info(f"Running OAuth2 setup for provider '{provider}'...")
         try:
-            if not settings.oauth2.is_configured:
-                logger.error(
-                    "OAuth2 not configured. Set GOOGLE_CLIENT_ID and "
-                    "GOOGLE_CLIENT_SECRET in .env file."
-                )
-                return 1
-            oauth = create_oauth2_from_config(settings)
+            if provider == "outlook":
+                if not settings.outlook_oauth2.is_configured:
+                    logger.error(
+                        "Outlook OAuth2 not configured. Set MICROSOFT_CLIENT_ID "
+                        "in .env file. See docs/OUTLOOK_OAUTH2_SETUP.md."
+                    )
+                    return 1
+                oauth = create_outlook_oauth2_from_config(settings)
+            else:
+                if not settings.oauth2.is_configured:
+                    logger.error(
+                        "OAuth2 not configured. Set GOOGLE_CLIENT_ID and "
+                        "GOOGLE_CLIENT_SECRET in .env file."
+                    )
+                    return 1
+                oauth = create_oauth2_from_config(settings)
             oauth.authenticate(force_reauth=True)
             logger.info("✓ OAuth2 setup complete!")
             logger.info(f"Token saved to: {oauth.token_file}")
@@ -458,7 +506,8 @@ def main():
             username=username,
             mailbox=args.mailbox,
             batch_size=args.batch_size,
-            poll_interval=args.poll_interval or settings.imap.poll_interval_seconds
+            poll_interval=args.poll_interval or settings.imap.poll_interval_seconds,
+            provider=provider,
         )
 
         producer.run(dry_run=args.dry_run)

@@ -59,6 +59,23 @@ class OAuth2Settings(BaseSettings):
         env_prefix = "GOOGLE_"
 
 
+class OutlookOAuth2Settings(BaseSettings):
+    """OAuth2 Microsoft/Outlook authentication configuration"""
+    client_id: str = Field(default="")
+    client_secret: str = Field(default="")
+    tenant_id: str = Field(default="common")
+    redirect_uri: str = Field(default="http://localhost:8080")
+    token_file: str = Field(default="tokens/outlook_token.json")
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if Outlook OAuth2 credentials are configured."""
+        return bool(self.client_id)
+
+    class Config:
+        env_prefix = "MICROSOFT_"
+
+
 class WorkerSettings(BaseSettings):
     """Worker and consumer group configuration"""
     consumer_group_name: str = Field(default="email_processor_group")
@@ -141,9 +158,11 @@ class LoggingSettings(BaseSettings):
 
 class Settings(BaseSettings):
     """Main settings aggregating all configuration sections"""
+    email_provider: str = Field(default="gmail", description="Email provider: 'gmail' or 'outlook'")
     redis: RedisSettings = Field(default_factory=RedisSettings)
     imap: IMAPSettings = Field(default_factory=IMAPSettings)
     oauth2: OAuth2Settings = Field(default_factory=OAuth2Settings)
+    outlook_oauth2: OutlookOAuth2Settings = Field(default_factory=OutlookOAuth2Settings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     idempotency: IdempotencySettings = Field(default_factory=IdempotencySettings)
     dlq: DLQSettings = Field(default_factory=DLQSettings)
@@ -163,6 +182,8 @@ class Settings(BaseSettings):
             self.redis.password = resolve_secret(self.redis.password)
         if self.oauth2.client_secret:
             self.oauth2.client_secret = resolve_secret(self.oauth2.client_secret)
+        if self.outlook_oauth2.client_secret:
+            self.outlook_oauth2.client_secret = resolve_secret(self.outlook_oauth2.client_secret)
         return self
 
 

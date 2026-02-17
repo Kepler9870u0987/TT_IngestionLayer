@@ -1,14 +1,18 @@
 # Email Ingestion System - Production Ready
 
-Sistema di ingestion email production-ready da Gmail IMAP con Redis Streams, implementato con approccio incrementale in 5 fasi.
+Sistema di ingestion email production-ready da Gmail e Outlook IMAP con Redis Streams, implementato con approccio incrementale.
 
-**Status Corrente**: ✅ Phase 1–5 Complete (42/42 tasks, 100%)
+**Status Corrente**: ✅ Phase 1–5 Complete | Outlook IMAP Support Added
 
 ---
 
 ## Overview
 
-Sistema scalabile per l'ingestion di email da Gmail tramite IMAP con OAuth2, utilizzando Redis Streams per processing asincrono.
+Sistema scalabile per l'ingestion di email da Gmail o Outlook tramite IMAP con OAuth2, utilizzando Redis Streams per processing asincrono.
+
+**Supported Providers:**
+- **Gmail** — OAuth2 via Google Auth, IMAP `imap.gmail.com`
+- **Outlook / Microsoft 365** — OAuth2 via MSAL, IMAP `outlook.office365.com`
 
 **Architettura:**
 - **Producer**: Polling IMAP con OAuth2, push a Redis Streams, gestione UID/UIDVALIDITY
@@ -18,7 +22,7 @@ Sistema scalabile per l'ingestion di email da Gmail tramite IMAP con OAuth2, uti
 **Stack Tecnologico:**
 - Python 3.11+
 - Redis 7+ (Streams, consumer groups)
-- OAuth2 Gmail (production-ready)
+- OAuth2 Gmail (Google Auth) + OAuth2 Outlook (MSAL)
 - IMAPClient per email fetching
 - Pydantic per configuration management
 
@@ -46,10 +50,16 @@ cp .env.example .env
 
 ### 2. Configure OAuth2
 
-Follow [OAuth2 Setup Guide](docs/OAUTH2_SETUP.md) to:
+**Gmail:** Follow [OAuth2 Setup Guide](docs/OAUTH2_SETUP.md) to:
 1. Create Google Cloud project
 2. Enable Gmail API
 3. Get OAuth2 credentials
+4. Configure .env file
+
+**Outlook:** Follow [Outlook OAuth2 Setup Guide](docs/OUTLOOK_OAUTH2_SETUP.md) to:
+1. Register app in Azure AD
+2. Configure IMAP permissions
+3. Get client ID and secret
 4. Configure .env file
 
 ### 3. Start Redis
@@ -65,18 +75,26 @@ docker run -d -p 6379:6379 redis:7-alpine
 ### 4. Authenticate
 
 ```bash
-# Run OAuth2 setup (browser window will open)
+# Gmail OAuth2 setup (browser window will open)
 python producer.py --auth-setup
+
+# Outlook OAuth2 setup (device code flow)
+python producer.py --provider outlook --auth-setup
 ```
 
 ### 5. Run Producer
 
 ```bash
-# Start producer
+# Start producer (Gmail - default)
 python producer.py --username your-email@gmail.com
 
-# Or use env var
-export IMAP_USER=your-email@gmail.com
+# Start producer (Outlook)
+python producer.py --provider outlook --username your-email@outlook.com
+
+# Or use env vars
+export EMAIL_PROVIDER=outlook
+export IMAP_USER=your-email@outlook.com
+export IMAP_HOST=outlook.office365.com
 python producer.py
 ```
 
@@ -102,11 +120,21 @@ IMAP_MAILBOX=INBOX
 POLL_INTERVAL_SECONDS=60
 ```
 
-### OAuth2
+### OAuth2 (Gmail)
 ```bash
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-secret
 GOOGLE_TOKEN_FILE=tokens/gmail_token.json
+```
+
+### OAuth2 (Outlook)
+```bash
+EMAIL_PROVIDER=outlook
+MICROSOFT_CLIENT_ID=your-azure-app-client-id
+MICROSOFT_CLIENT_SECRET=your-client-secret
+MICROSOFT_TENANT_ID=common
+MICROSOFT_TOKEN_FILE=tokens/outlook_token.json
+IMAP_HOST=outlook.office365.com
 ```
 
 See `.env.example` for all options.
@@ -135,7 +163,8 @@ python producer.py --dry-run
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--username` | Gmail email address | From env/config |
+| `--username` | Email address | From env/config |
+| `--provider` | Email provider (gmail/outlook) | From env or gmail |
 | `--mailbox` | Mailbox to monitor | INBOX |
 | `--batch-size` | Max emails per poll | 50 |
 | `--poll-interval` | Seconds between polls | 60 |
@@ -553,14 +582,18 @@ Internal use only.
 - **Documentation**: `docs/`
 - **Progress Tracking**: `PROGRESS.md`
 - **Implementation Plan**: `.claude/plans/snuggly-wondering-snowflake.md`
-- **OAuth2 Setup**: `docs/OAUTH2_SETUP.md`
+- **OAuth2 Setup (Gmail)**: `docs/OAUTH2_SETUP.md`
+- **OAuth2 Setup (Outlook)**: `docs/OUTLOOK_OAUTH2_SETUP.md`
 
 ---
 
 ## FAQ
 
-**Q: Can I use this with non-Gmail IMAP servers?**
-A: Currently optimized for Gmail. Other IMAP servers would need OAuth2 adapter changes.
+**Q: Which email providers are supported?**
+A: Gmail and Outlook/Microsoft 365. Set `EMAIL_PROVIDER=gmail` or `EMAIL_PROVIDER=outlook` in `.env`. The system uses IMAP with OAuth2 for both.
+
+**Q: Can I use this with other IMAP servers?**
+A: Not directly. Other providers would need a new OAuth2 adapter module following the same pattern as `OAuth2Gmail` / `OAuth2Outlook`.
 
 **Q: How do I handle multiple mailboxes?**
 A: Run multiple producer instances with different `--mailbox` arguments.

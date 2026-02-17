@@ -217,3 +217,114 @@ class TestCleanup:
     def test_cleanup_closes_redis(self, producer):
         producer.cleanup()
         producer._mock_redis.close.assert_called_once()
+
+
+class TestEmailProviderDispatch:
+    """Test email provider selection (gmail vs outlook)"""
+
+    def test_producer_defaults_to_gmail(self, producer):
+        """Default provider should be gmail"""
+        assert producer.provider == "gmail"
+
+    def test_producer_with_outlook_provider(self, mock_settings):
+        """Test creating producer with outlook provider"""
+        mock_settings.outlook_oauth2 = MagicMock()
+        mock_settings.outlook_oauth2.is_configured = True
+        mock_settings.outlook_oauth2.client_id = "ms-cid"
+        mock_settings.outlook_oauth2.client_secret = "ms-secret"
+        mock_settings.outlook_oauth2.tenant_id = "tenant"
+        mock_settings.outlook_oauth2.token_file = "tokens/outlook_t.json"
+        mock_settings.outlook_oauth2.redirect_uri = "http://localhost:8080"
+        mock_settings.email_provider = "outlook"
+
+        with patch("producer.settings", mock_settings), \
+             patch("producer.create_redis_client_from_config") as mock_redis_factory, \
+             patch("producer.create_outlook_oauth2_from_config") as mock_outlook_oauth_factory, \
+             patch("producer.ProducerStateManager"), \
+             patch("producer.CircuitBreakers") as mock_cb, \
+             patch("producer.ShutdownManager"), \
+             patch("producer.setup_logging"), \
+             patch("producer.set_component"):
+
+            mock_redis_factory.return_value = MagicMock()
+            mock_outlook_oauth_factory.return_value = MagicMock()
+            mock_cb.get.return_value = MagicMock()
+
+            from producer import EmailProducer
+            p = EmailProducer(
+                username="user@outlook.com",
+                provider="outlook",
+            )
+            assert p.provider == "outlook"
+            mock_outlook_oauth_factory.assert_called_once()
+
+    def test_producer_raises_on_unsupported_provider(self, mock_settings):
+        """Test that unsupported provider raises ValueError"""
+        with patch("producer.settings", mock_settings), \
+             patch("producer.create_redis_client_from_config"), \
+             patch("producer.CircuitBreakers"), \
+             patch("producer.ShutdownManager"), \
+             patch("producer.setup_logging"), \
+             patch("producer.set_component"):
+
+            from producer import EmailProducer
+            with pytest.raises(ValueError, match="Unsupported email provider"):
+                EmailProducer("user@example.com", provider="yahoo")
+
+    def test_producer_outlook_raises_if_not_configured(self, mock_settings):
+        """Test producer raises if Outlook OAuth2 is not configured"""
+        mock_settings.outlook_oauth2 = MagicMock()
+        mock_settings.outlook_oauth2.is_configured = False
+
+        with patch("producer.settings", mock_settings), \
+             patch("producer.create_redis_client_from_config"), \
+             patch("producer.CircuitBreakers"), \
+             patch("producer.ShutdownManager"), \
+             patch("producer.setup_logging"), \
+             patch("producer.set_component"):
+
+            from producer import EmailProducer
+            with pytest.raises(OAuth2AuthenticationError, match="Outlook OAuth2 not configured"):
+                EmailProducer("user@outlook.com", provider="outlook")
+
+    def test_fetch_uses_outlook_imap_client(self, mock_settings):
+        """Test fetch_and_push_emails uses OutlookIMAPClient for outlook provider"""
+        mock_settings.outlook_oauth2 = MagicMock()
+        mock_settings.outlook_oauth2.is_configured = True
+        mock_settings.outlook_oauth2.client_id = "ms-cid"
+        mock_settings.outlook_oauth2.client_secret = "ms-secret"
+        mock_settings.outlook_oauth2.tenant_id = "tenant"
+        mock_settings.outlook_oauth2.token_file = "tokens/outlook_t.json"
+        mock_settings.outlook_oauth2.redirect_uri = "http://localhost:8080"
+
+        with patch("producer.settings", mock_settings), \
+             patch("producer.create_redis_client_from_config") as mock_redis_factory, \
+             patch("producer.create_outlook_oauth2_from_config") as mock_outlook_oauth_factory, \
+             patch("producer.create_outlook_imap_client_from_config") as mock_outlook_imap_factory, \
+             patch("producer.ProducerStateManager") as mock_sm_cls, \
+             patch("producer.CircuitBreakers") as mock_cb, \
+             patch("producer.ShutdownManager"), \
+             patch("producer.setup_logging"), \
+             patch("producer.set_component"):
+
+            mock_redis = MagicMock()
+            mock_redis_factory.return_value = mock_redis
+            mock_outlook_oauth_factory.return_value = MagicMock()
+            mock_cb.get.return_value = MagicMock()
+
+            mock_imap = MagicMock()
+            mock_imap.select_mailbox.return_value = (12345, 5)
+            mock_imap.fetch_uids_since.return_value = []
+            mock_outlook_imap_factory.return_value = mock_imap
+
+            mock_state = MagicMock()
+            mock_state.check_uidvalidity_change.return_value = False
+            mock_state.get_last_uid.return_value = 0
+            mock_sm_cls.return_value = mock_state
+
+            from producer import EmailProducer
+            p = EmailProducer("user@outlook.com", provider="outlook")
+            p.fetch_and_push_emails()
+
+            mock_outlook_imap_factory.assert_called_once()
+            mock_imap.connect.assert_called_once()
