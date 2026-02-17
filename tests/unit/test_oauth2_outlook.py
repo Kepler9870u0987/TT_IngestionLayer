@@ -31,8 +31,6 @@ def oauth2(tmp_path):
             token_file=token_file,
             redirect_uri="http://localhost:8080",
         )
-        # Store the mock for access in tests
-        instance._mock_msal = mock_msal
     return instance
 
 
@@ -52,7 +50,6 @@ def public_oauth2(tmp_path):
             tenant_id="common",
             token_file=token_file,
         )
-        instance._mock_msal = mock_msal
     return instance
 
 

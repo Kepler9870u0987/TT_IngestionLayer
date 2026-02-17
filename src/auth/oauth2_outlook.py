@@ -198,7 +198,7 @@ class OAuth2Outlook:
         """
         try:
             # Try device code flow (works in headless and headed environments)
-            flow = self._app.initiate_device_flow(scopes=OUTLOOK_SCOPES)
+            flow = self._app.initiate_device_flow(scopes=OUTLOOK_SCOPES)  # type: ignore
 
             if "user_code" not in flow:
                 raise OAuth2AuthenticationError(
@@ -213,7 +213,7 @@ class OAuth2Outlook:
             print("=" * 60 + "\n")
 
             # Wait for user to complete auth in browser
-            result = self._app.acquire_token_by_device_flow(flow)
+            result = self._app.acquire_token_by_device_flow(flow)  # type: ignore
 
             if "access_token" not in result:
                 error_desc = result.get("error_description", "Unknown error")
