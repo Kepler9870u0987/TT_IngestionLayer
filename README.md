@@ -144,6 +144,33 @@ python producer.py --dry-run
 
 ---
 
+## Worker Usage
+
+### Basic Usage
+
+```bash
+# Start with defaults
+python worker.py
+
+# Custom consumer group and name
+python worker.py --group my_group --consumer worker_02
+
+# Larger batch and shorter timeout
+python worker.py --batch-size 50 --block-timeout 2000
+```
+
+### Command Line Options
+
+| Option | Description | Default |
+|--------|-------------|--------|
+| `--stream` | Redis stream to consume | From config |
+| `--group` | Consumer group name | `email_processor_group` |
+| `--consumer` | Consumer name | `worker_01` |
+| `--batch-size` | Messages per read | 10 |
+| `--block-timeout` | Block timeout (ms) | 5000 |
+
+---
+
 ## Architecture Details
 
 ### Phase 1: Core Infrastructure ✅
@@ -397,33 +424,47 @@ python producer.py --auth-setup
 ### Project Structure
 
 ```
-c:\TT_IngestionLayer\
+TT_IngestionLayer/
 ├── config/
-│   └── settings.py          # Pydantic configuration
+│   ├── settings.py              # Pydantic configuration (all env vars)
+│   ├── prometheus.yml           # Prometheus scrape config
+│   └── grafana_dashboard.json   # Pre-built Grafana dashboard
 ├── src/
 │   ├── auth/
-│   │   └── oauth2_gmail.py  # OAuth2 manager
+│   │   └── oauth2_gmail.py      # OAuth2 manager (token refresh, XOAUTH2)
 │   ├── imap/
-│   │   └── imap_client.py   # IMAP client
+│   │   └── imap_client.py       # IMAP client (UID tracking, parsing)
 │   ├── producer/
-│   │   └── state_manager.py # State persistence
-│   ├── worker/              # Phase 3
+│   │   └── state_manager.py     # State persistence (UID, UIDVALIDITY)
+│   ├── worker/
+│   │   ├── processor.py         # Email processing business logic
+│   │   ├── idempotency.py       # Redis Sets deduplication
+│   │   ├── dlq.py               # Dead Letter Queue handler
+│   │   ├── backoff.py           # Exponential backoff manager
+│   │   └── recovery.py          # Orphaned message recovery (XPENDING/XCLAIM)
 │   ├── common/
-│   │   ├── redis_client.py  # Redis wrapper
-│   │   ├── logging_config.py
-│   │   ├── exceptions.py
-│   │   └── retry.py
-│   └── monitoring/          # Phase 5
+│   │   ├── redis_client.py      # Redis wrapper (pooling, ACL, SSL)
+│   │   ├── logging_config.py    # Structured JSON logging
+│   │   ├── exceptions.py        # Custom exception hierarchy
+│   │   ├── retry.py             # Tenacity retry decorators
+│   │   ├── batch.py             # Pipeline batch XADD/XACK
+│   │   ├── circuit_breaker.py   # Circuit breaker pattern (3-state)
+│   │   ├── correlation.py       # Correlation IDs (ContextVar)
+│   │   ├── health.py            # HTTP health endpoints
+│   │   ├── shutdown.py          # Graceful shutdown manager
+│   │   └── secrets.py           # Secret resolution (file:/env:)
+│   └── monitoring/
+│       └── metrics.py           # Prometheus metrics exporter
 ├── tests/
-│   ├── unit/
-│   ├── integration/         # Phase 3
-│   └── load/                # Phase 4
+│   ├── unit/                    # 379+ unit tests
+│   ├── integration/             # End-to-end pipeline tests
+│   └── load/                    # Throughput & latency benchmarks
 ├── scripts/
-│   ├── backup.py            # Redis backup automation
-│   ├── restore.py           # Redis restore procedure
-│   ├── start.sh / .ps1      # Start producer + worker
-│   ├── stop.sh / .ps1       # Graceful stop
-│   └── health_check.sh/.ps1 # Health check script
+│   ├── backup.py                # Redis backup automation
+│   ├── restore.py               # Redis restore procedure
+│   ├── start.sh / .ps1          # Start producer + worker
+│   ├── stop.sh / .ps1           # Graceful stop
+│   └── health_check.sh / .ps1   # Health check script
 ├── docs/
 │   ├── OAUTH2_SETUP.md
 │   ├── WORKER_README.md
@@ -433,9 +474,10 @@ c:\TT_IngestionLayer\
 │       ├── scaling.md
 │       ├── dlq_management.md
 │       └── redis_operations.md
-├── producer.py              # Main producer script
-├── worker.py                # Main worker script
-├── PROGRESS.md              # Detailed progress tracking
+├── producer.py                  # Main producer script
+├── worker.py                    # Main worker script
+├── pyproject.toml               # Project config (pytest, black, mypy)
+├── PROGRESS.md                  # Detailed progress tracking
 └── README.md
 ```
 
@@ -466,8 +508,8 @@ c:\TT_IngestionLayer\
 ✅ **Credentials in .env** - Gitignored
 ✅ **Tokens encrypted** - File permissions 600
 ✅ **No PII in logs** - Only metadata
-⏸️ **Redis ACL** - Phase 4
-⏸️ **Secrets management** - HashiCorp Vault integration (optional)
+✅ **Redis ACL** - Username/password authentication, SSL/TLS support
+✅ **Secrets management** - `file:` and `env:` resolution via `secrets.py`
 
 See [OAuth2 Setup Guide](docs/OAUTH2_SETUP.md) for security best practices.
 
@@ -482,6 +524,8 @@ See [OAuth2 Setup Guide](docs/OAUTH2_SETUP.md) for security best practices.
 | Phase 3: Worker+Idempotency | ✅ Complete | Consumer groups, DLQ, Tests |
 | Phase 4: Robustness | ✅ Complete | Load tests, Health checks, Graceful shutdown |
 | Phase 5: Observability | ✅ Complete | Prometheus, Grafana, Ops tools |
+| Phase 6: Hardening | ✅ Complete | Unit tests (8 modules), Redis ACL, secrets.py |
+| Phase 7: Stabilisation | ✅ Complete | Bug fixes, batch ops, pyproject.toml, pre-commit |
 
 See [PROGRESS.md](PROGRESS.md) for detailed task breakdown.
 

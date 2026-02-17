@@ -159,9 +159,10 @@ class TestFetchAndPushEmails:
             assert count == 0
 
     def test_push_new_emails(self, producer, mock_settings):
-        """Test pushing new emails to stream"""
+        """Test pushing new emails to stream via BatchProducer"""
         with patch("producer.create_imap_client_from_config") as mock_imap_factory, \
-             patch("producer.settings", mock_settings):
+             patch("producer.settings", mock_settings), \
+             patch("producer.BatchProducer") as mock_batch_cls:
             mock_imap = MagicMock()
             mock_imap.select_mailbox.return_value = (12345, 10)
             mock_imap.fetch_uids_since.return_value = [101, 102]
@@ -175,13 +176,17 @@ class TestFetchAndPushEmails:
             mock_imap.fetch_messages.return_value = [mock_msg1, mock_msg2]
             mock_imap_factory.return_value = mock_imap
 
+            mock_batch = MagicMock()
+            mock_batch.flush.return_value = ["id-1", "id-2"]
+            mock_batch_cls.return_value = mock_batch
+
             producer._mock_state.check_uidvalidity_change.return_value = False
             producer._mock_state.get_last_uid.return_value = 100
-            producer._mock_redis.xadd.return_value = "msg-id"
 
             count = producer.fetch_and_push_emails()
             assert count == 2
-            assert producer._mock_redis.xadd.call_count == 2
+            assert mock_batch.add.call_count == 2
+            mock_batch.flush.assert_called_once()
 
     def test_uidvalidity_change_resets_state(self, producer, mock_settings):
         """Test state reset when UIDVALIDITY changes"""
