@@ -8,7 +8,9 @@ from datetime import datetime
 from src.worker.processor import (
     EmailProcessor,
     ExtendedEmailProcessor,
-    create_processor_from_config
+    create_processor_from_config,
+    HIGH_PRIORITY_KEYWORDS,
+    LOW_PRIORITY_KEYWORDS,
 )
 from src.common.exceptions import ProcessingError
 
@@ -30,8 +32,8 @@ class TestEmailProcessor:
             "to": ["recipient@example.com"],
             "subject": "Test Email",
             "date": "2026-02-16T10:00:00Z",
-            "body_preview": "This is a test email body",
-            "has_attachments": "false"
+            "body_text": "This is a test email body",
+            "size": 1500,
         }
 
     def test_initialization(self, processor):
@@ -88,8 +90,9 @@ class TestEmailProcessor:
         assert result["message_id"] == "email-123"
         assert result["from"] == "sender@example.com"
         assert result["subject"] == "Test Email"
-        assert result["has_attachments"] is False
-        assert len(result["body_preview"]) <= 100
+        assert result["priority"] in ("high", "normal", "low")
+        assert "body_preview" in result
+        assert "processed_at" in result
 
     def test_custom_handler(self, sample_email):
         """Test processor with custom handler"""
@@ -140,7 +143,8 @@ class TestEmailProcessor:
                 "message_id": "email-1",
                 "from": "sender@example.com",
                 "subject": "Valid",
-                "date": "2026-02-16T10:00:00Z"
+                "date": "2026-02-16T10:00:00Z",
+                "size": 100,
             },
             {
                 "message_id": "email-2",
@@ -151,7 +155,8 @@ class TestEmailProcessor:
                 "message_id": "email-3",
                 "from": "sender@example.com",
                 "subject": "Valid",
-                "date": "2026-02-16T10:00:00Z"
+                "date": "2026-02-16T10:00:00Z",
+                "size": 100,
             }
         ]
         
@@ -204,6 +209,62 @@ class TestEmailProcessor:
         assert isinstance(processor, EmailProcessor)
         assert processor.custom_handler is None
 
+    def test_normalize_email(self):
+        """Test email normalization"""
+        data = {
+            "from": "  Sender@EXAMPLE.com  ",
+            "to": ["  Recip@TEST.com "],
+            "subject": "  Spaced  ",
+        }
+        result = EmailProcessor._normalize_email(data)
+        assert result["from"] == "sender@example.com"
+        assert result["to"] == ["recip@test.com"]
+        assert result["subject"] == "Spaced"
+
+    def test_classify_priority_high(self):
+        """Test high priority classification"""
+        data = {"subject": "URGENT: Need response", "from": "a@b.com"}
+        assert EmailProcessor._classify_priority(data) == "high"
+
+    def test_classify_priority_low(self):
+        """Test low priority classification"""
+        data = {"subject": "Newsletter Edition 42", "from": "noreply@news.com"}
+        assert EmailProcessor._classify_priority(data) == "low"
+
+    def test_classify_priority_normal(self):
+        """Test normal priority classification"""
+        data = {"subject": "Meeting Tomorrow", "from": "alice@corp.com"}
+        assert EmailProcessor._classify_priority(data) == "normal"
+
+    def test_size_validation_rejects_oversized(self):
+        """Test that emails exceeding max size are rejected"""
+        processor = EmailProcessor(max_email_size=1000)
+        data = {
+            "message_id": "big",
+            "from": "a@b.com",
+            "subject": "Big email",
+            "date": "2026-01-01",
+            "size": 2000,
+        }
+        with pytest.raises(ProcessingError, match="exceeds max size"):
+            processor.process(data)
+
+    def test_output_stream_forwarding(self):
+        """Test processed email forwarded to output stream"""
+        mock_redis = Mock()
+        processor = EmailProcessor(
+            output_stream="out_stream", redis_client=mock_redis
+        )
+        data = {
+            "message_id": "fwd-1",
+            "from": "a@b.com",
+            "subject": "Forward me",
+            "date": "2026-01-01",
+            "size": 100,
+        }
+        processor.process(data)
+        mock_redis.xadd.assert_called_once()
+
 
 class TestExtendedEmailProcessor:
     """Test suite for ExtendedEmailProcessor"""
@@ -222,8 +283,8 @@ class TestExtendedEmailProcessor:
             "to": ["recipient@example.com"],
             "subject": "Urgent Action Required",
             "date": "2026-02-16T10:00:00Z",
-            "body_preview": "This is an URGENT message that requires immediate action",
-            "has_attachments": "false"
+            "body_text": "This is an URGENT message that requires immediate action",
+            "size": 1500,
         }
 
     def test_extended_processing(self, processor, sample_email):
@@ -231,15 +292,14 @@ class TestExtendedEmailProcessor:
         result = processor._default_processing(sample_email)
         
         assert result["processed_by"] == "ExtendedEmailProcessor"
-        assert result["extended"] is True
         assert "keyword_matches" in result
         assert "priority" in result
+        assert "sender_domain" in result
 
     def test_keyword_detection_high_priority(self, processor, sample_email):
         """Test keyword detection for high priority"""
         result = processor._default_processing(sample_email)
         
-        assert len(result["keyword_matches"]) > 0
         assert result["priority"] == "high"
 
     def test_keyword_detection_normal_priority(self, processor):
@@ -249,11 +309,10 @@ class TestExtendedEmailProcessor:
             "from": "sender@example.com",
             "subject": "Regular Email",
             "date": "2026-02-16T10:00:00Z",
-            "body_preview": "Just a regular message",
-            "has_attachments": "false"
+            "body_text": "Just a regular message",
+            "size": 500,
         }
         
         result = processor._default_processing(normal_email)
         
-        assert len(result["keyword_matches"]) == 0
         assert result["priority"] == "normal"

@@ -101,6 +101,15 @@ class MonitoringSettings(BaseSettings):
         env_prefix = ""
 
 
+class ProcessorSettings(BaseSettings):
+    """Email processor configuration"""
+    output_stream_name: str = Field(default="email_processed_stream")
+    max_email_size_bytes: int = Field(default=26214400)  # 25 MB
+
+    class Config:
+        env_prefix = "PROCESSOR_"
+
+
 class CircuitBreakerSettings(BaseSettings):
     """Circuit breaker configuration"""
     failure_threshold: int = Field(default=5)
@@ -140,6 +149,7 @@ class Settings(BaseSettings):
     idempotency: IdempotencySettings = Field(default_factory=IdempotencySettings)
     dlq: DLQSettings = Field(default_factory=DLQSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
+    processor: ProcessorSettings = Field(default_factory=ProcessorSettings)
     circuit_breaker: CircuitBreakerSettings = Field(default_factory=CircuitBreakerSettings)
     recovery: RecoverySettings = Field(default_factory=RecoverySettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
