@@ -55,7 +55,7 @@ try {
     $r = Invoke-WebRequest -Uri "http://${HostName}:${MetricsPort}/metrics" -UseBasicParsing -TimeoutSec 5
     Write-Ok "Metrics: http://${HostName}:${MetricsPort}/metrics"
 } catch {
-    Write-Log "  Metrics: http://${HostName}:${MetricsPort}/metrics  (not reachable – may not be running)"
+    Write-Log "  Metrics: http://${HostName}:${MetricsPort}/metrics  (not reachable - may not be running)"
 }
 
 # ---- Redis ----
