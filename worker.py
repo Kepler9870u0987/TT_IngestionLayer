@@ -27,6 +27,7 @@ from src.worker.backoff import create_backoff_manager_from_config
 from src.worker.dlq import create_dlq_manager_from_config
 from src.worker.processor import create_processor_from_config
 from src.worker.recovery import OrphanedMessageRecovery, ConnectionWatchdog
+from src.common.batch import BatchAcknowledger
 from src.monitoring.metrics import (
     get_metrics_collector,
     start_metrics_server,
@@ -93,7 +94,7 @@ class EmailWorker:
             self.redis,
             dlq_stream_name=settings.dlq.stream_name
         )
-        self.processor = create_processor_from_config()
+        self.processor = create_processor_from_config(redis_client=self.redis)
 
         # Circuit breaker
         self.redis_cb = CircuitBreakers.get(
@@ -394,6 +395,13 @@ class EmailWorker:
                 self.redis_cb.record_success()
 
                 # Process each message in the batch
+                ack_batch = BatchAcknowledger(
+                    redis_client=self.redis,
+                    stream_name=self.stream_name,
+                    consumer_group=self.consumer_group,
+                    batch_size=self.batch_size
+                )
+
                 for stream_name, stream_messages in messages:
                     for message_id, message_data in stream_messages:
                         if not self.shutdown.is_running:
@@ -404,19 +412,20 @@ class EmailWorker:
                         # Process message
                         success = self.process_message(message_id, message_data)
 
-                        # Acknowledge message if processed successfully
+                        # Buffer ACK for batch flush
                         if success:
-                            self.redis.xack(
-                                self.stream_name,
-                                self.consumer_group,
-                                message_id
-                            )
-                            logger.debug(f"Acknowledged message: {message_id}")
+                            ack_batch.add(message_id)
+                            logger.debug(f"Queued ACK for message: {message_id}")
                         else:
                             logger.warning(
                                 f"Message not acknowledged (will retry): "
                                 f"{message_id}"
                             )
+
+                # Flush all buffered ACKs at once
+                acked = ack_batch.flush()
+                if acked:
+                    logger.debug(f"Batch-acknowledged {acked} messages")
 
                 # Log periodic stats
                 if self.messages_processed % 100 == 0 and self.messages_processed > 0:

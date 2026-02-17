@@ -8,7 +8,7 @@ import sys
 import time
 import argparse
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config.settings import settings
 from src.auth.oauth2_gmail import create_oauth2_from_config
@@ -26,6 +26,7 @@ from src.common.shutdown import ShutdownManager
 from src.common.correlation import CorrelationContext, set_component
 from src.common.circuit_breaker import CircuitBreakers, CircuitBreakerError
 from src.common.health import HealthServer, HealthRegistry, HealthCheck
+from src.common.batch import BatchProducer
 from src.worker.recovery import ConnectionWatchdog
 from src.monitoring.metrics import (
     get_metrics_collector,
@@ -160,26 +161,28 @@ class EmailProducer:
         logger.info(f"Fetching {len(new_uids)} new emails...")
         messages = self.imap_client.fetch_messages(new_uids)
 
-        # Push to Redis Stream
-        pushed_count = 0
+        # Push to Redis Stream using batch pipeline
+        batch = BatchProducer(
+            redis_client=self.redis_client,
+            stream_name=self.stream_name,
+            batch_size=len(messages),  # flush all at once
+            maxlen=self.max_stream_length
+        )
+
         for message in messages:
             try:
-                # Serialize message to JSON
                 payload = message.to_json()
-
-                # Push to stream
-                msg_id = self.redis_client.xadd(
-                    self.stream_name,
-                    {'payload': payload},
-                    maxlen=self.max_stream_length
-                )
-
-                logger.debug(f"Pushed email UID {message.uid} to stream: {msg_id}")
-                pushed_count += 1
-
+                batch.add({'payload': payload})
             except Exception as e:
-                logger.error(f"Failed to push email UID {message.uid}: {e}")
-                # Continue with other messages
+                logger.error(f"Failed to serialize email UID {message.uid}: {e}")
+
+        try:
+            msg_ids = batch.flush()
+            pushed_count = len(msg_ids)
+            logger.debug(f"Batch pushed {pushed_count} emails to stream")
+        except Exception as e:
+            logger.error(f"Batch flush failed: {e}")
+            pushed_count = 0
 
         # Update state atomically with last successfully pushed UID
         if pushed_count > 0:
@@ -286,7 +289,7 @@ class EmailProducer:
                 with CorrelationContext() as ctx:
                     logger.info(
                         f"--- Poll #{poll_count} at "
-                        f"{datetime.utcnow().isoformat()}Z ---"
+                        f"{datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')} ---"
                     )
 
                     try:
@@ -439,16 +442,11 @@ def main():
     # Determine username
     username = args.username
     if not username:
-        # Try to get from IMAP_USER env var or extract from client_id
-        import os
-        username = os.getenv('IMAP_USER')
+        # Read from settings (IMAP_USER env var)
+        username = settings.imap.user
         if not username:
-            # Try to derive from OAuth2 client_id if it looks like an email
-            if '@' in settings.oauth2.client_id:
-                username = settings.oauth2.client_id
-            else:
-                logger.error("Username required. Use --username or set IMAP_USER env var")
-                return 1
+            logger.error("Username required. Use --username or set IMAP_USER env var")
+            return 1
 
     # Setup shutdown manager (replaces old signal handlers)
     shutdown = ShutdownManager()

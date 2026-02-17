@@ -35,6 +35,7 @@ class IMAPSettings(BaseSettings):
     """IMAP server configuration"""
     host: str = Field(default="imap.gmail.com")
     port: int = Field(default=993)
+    user: str = Field(default="")
     mailbox: str = Field(default="INBOX")
     poll_interval_seconds: int = Field(default=60)
 
@@ -85,13 +86,11 @@ class DLQSettings(BaseSettings):
     max_backoff_seconds: int = Field(default=3600)
 
     class Config:
-        env_prefix = ""
+        env_prefix = "DLQ_"
 
 
 class MonitoringSettings(BaseSettings):
-    """Monitoring and health check configuration"""
-    metrics_port: int = Field(default=9090)
-    health_check_port: int = Field(default=8080)
+    """Monitoring and health check configuration (per-component ports)"""
     producer_metrics_port: int = Field(default=9090)
     producer_health_port: int = Field(default=8080)
     worker_metrics_port: int = Field(default=9091)

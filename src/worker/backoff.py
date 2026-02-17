@@ -15,6 +15,12 @@ class BackoffManager:
     """
     Manages exponential backoff for message retries.
     Tracks retry attempts and calculates appropriate delays.
+
+    .. note:: **Known limitation** – Retry state is held in-memory only.
+       If the worker process restarts, all retry tracking is lost and
+       messages resume from attempt 0.  This is acceptable because the
+       DLQ safety-net (via ``OrphanedMessageRecovery`` and XPENDING
+       delivery counts) prevents infinite retries at the Redis level.
     """
 
     def __init__(

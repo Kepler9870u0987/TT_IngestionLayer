@@ -12,7 +12,7 @@ import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any, Callable, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.common.logging_config import get_logger
 from src.common.circuit_breaker import CircuitBreakers
@@ -176,7 +176,7 @@ class HealthRegistry:
             "status": "alive",
             "component": self.component,
             "uptime_seconds": round(time.time() - self.start_time, 1),
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         }
 
     def get_readiness(self) -> Dict[str, Any]:
@@ -191,7 +191,7 @@ class HealthRegistry:
             "status": "ready" if check_results["status"] == "healthy" else "not_ready",
             "component": self.component,
             "checks": check_results["checks"],
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         }
 
     def get_status(self) -> Dict[str, Any]:
@@ -215,7 +215,7 @@ class HealthRegistry:
             "component": self.component,
             "status": check_results["status"],
             "uptime_seconds": round(time.time() - self.start_time, 1),
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "health_checks": check_results["checks"],
             "circuit_breakers": CircuitBreakers.get_all_stats(),
             "statistics": stats

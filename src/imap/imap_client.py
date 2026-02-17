@@ -5,7 +5,7 @@ Handles email fetching with proper state management.
 import email
 from email.header import decode_header
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 from imapclient import IMAPClient
@@ -49,7 +49,7 @@ class EmailMessage:
         self.size = size
         self.headers = headers
         self.message_id = message_id
-        self.fetched_at = datetime.utcnow()
+        self.fetched_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for Redis storage"""
@@ -279,7 +279,7 @@ class GmailIMAPClient:
         subject = self._decode_header(envelope.subject) if envelope and envelope.subject else ""
         from_addr = self._parse_address(envelope.from_[0]) if envelope and envelope.from_ else ""
         to_addrs = [self._parse_address(addr) for addr in envelope.to] if envelope and envelope.to else []
-        message_date = envelope.date if envelope and envelope.date else datetime.utcnow()
+        message_date = envelope.date if envelope and envelope.date else datetime.now(timezone.utc)
 
         # Parse headers
         header_data = msg_data.get(b'BODY[HEADER]', b'')
@@ -380,7 +380,7 @@ def create_imap_client_from_config(config, oauth2: OAuth2Gmail) -> GmailIMAPClie
     """
     return GmailIMAPClient(
         oauth2=oauth2,
-        username=config.oauth2.client_id.split('@')[0] + '@gmail.com',  # Extract email
+        username=config.imap.user,
         host=config.imap.host,
         port=config.imap.port
     )

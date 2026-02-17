@@ -9,7 +9,7 @@ import time
 import shutil
 import tempfile
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
@@ -125,7 +125,7 @@ class TestPruneOldBackups:
         old = tmp_path / "redis_20250101_000000.rdb"
         old.write_bytes(b"old")
         # Fake old mtime
-        old_ts = (datetime.utcnow() - timedelta(days=40)).timestamp()
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=40)).timestamp()
         os.utime(old, (old_ts, old_ts))
 
         # Create recent file

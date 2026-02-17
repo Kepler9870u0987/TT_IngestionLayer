@@ -7,6 +7,7 @@ google-auth-oauthlib
 authlib>=1.2.0
 google-auth-httplib2>=0.2.0
 imapclient>=3.0.0
+requests>=2.31.0
 prometheus-client>=0.19.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0

@@ -7,7 +7,7 @@ import json
 import base64
 from pathlib import Path
 from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -244,8 +244,8 @@ class OAuth2Gmail:
 
         # Check expiry with 5-minute buffer
         if self.credentials.expiry:
-            buffer_time = datetime.utcnow() + timedelta(minutes=5)
-            if self.credentials.expiry.replace(tzinfo=None) < buffer_time:
+            buffer_time = datetime.now(timezone.utc) + timedelta(minutes=5)
+            if self.credentials.expiry.replace(tzinfo=timezone.utc) < buffer_time:
                 logger.info("Token expiring soon")
                 return False
 
@@ -302,7 +302,7 @@ class OAuth2Gmail:
         if self.credentials.expiry:
             info["expiry"] = self.credentials.expiry.isoformat()
             info["expires_in_seconds"] = (
-                self.credentials.expiry.replace(tzinfo=None) - datetime.utcnow()
+                self.credentials.expiry.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)
             ).total_seconds()
 
         return info

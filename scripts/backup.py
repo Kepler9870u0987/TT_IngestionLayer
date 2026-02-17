@@ -17,7 +17,7 @@ import time
 import shutil
 import argparse
 import glob
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Ensure project root is on sys.path so imports work when invoked directly
@@ -94,7 +94,7 @@ def copy_backup(rdb_path: Path, output_dir: Path) -> Path | None:
         Path of the created backup file, or None on failure
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     dest = output_dir / f"redis_{ts}.rdb"
 
     try:
@@ -114,10 +114,10 @@ def prune_old_backups(output_dir: Path, retention_days: int) -> int:
     Returns:
         Number of files removed.
     """
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     removed = 0
     for f in sorted(output_dir.glob("redis_*.rdb")):
-        mtime = datetime.utcfromtimestamp(f.stat().st_mtime)
+        mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
         if mtime < cutoff:
             f.unlink()
             logger.info(f"Pruned old backup: {f.name}")

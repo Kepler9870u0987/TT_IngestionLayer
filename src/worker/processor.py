@@ -4,7 +4,7 @@ Extensible processor with hooks for custom business logic.
 Implements normalization, validation, classification, and output forwarding.
 """
 from typing import Dict, Any, Optional, Callable, List
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import re
 
@@ -171,7 +171,7 @@ class EmailProcessor:
             "size": email_size,
             "priority": priority,
             "body_preview": str(normalized.get("body_text", ""))[:200],
-            "processed_at": datetime.utcnow().isoformat() + "Z",
+            "processed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
 
         # --- Forward to output stream ---

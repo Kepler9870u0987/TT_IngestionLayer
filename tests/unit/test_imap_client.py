@@ -3,7 +3,7 @@ Unit tests for GmailIMAPClient and EmailMessage.
 """
 import pytest
 from unittest.mock import patch, MagicMock, PropertyMock
-from datetime import datetime
+from datetime import datetime, timezone
 
 import sys
 from pathlib import Path
@@ -72,7 +72,7 @@ class TestEmailMessage:
         long_body = "x" * 3000
         msg = EmailMessage(
             uid=1, uidvalidity=1, mailbox="INBOX", from_addr="a@b.com",
-            to_addrs=[], subject="s", date=datetime.utcnow(),
+            to_addrs=[], subject="s", date=datetime.now(timezone.utc),
             body_text=long_body, body_html="", size=0, headers={},
             message_id="<1@local>"
         )
@@ -83,7 +83,7 @@ class TestEmailMessage:
         """Test short body_text is returned as-is"""
         msg = EmailMessage(
             uid=1, uidvalidity=1, mailbox="INBOX", from_addr="a@b.com",
-            to_addrs=[], subject="s", date=datetime.utcnow(),
+            to_addrs=[], subject="s", date=datetime.now(timezone.utc),
             body_text="short", body_html="", size=0, headers={},
             message_id="<1@local>"
         )
@@ -95,7 +95,7 @@ class TestEmailMessage:
         html = "<div>" + "a" * 600 + "</div>"
         msg = EmailMessage(
             uid=1, uidvalidity=1, mailbox="INBOX", from_addr="a@b.com",
-            to_addrs=[], subject="s", date=datetime.utcnow(),
+            to_addrs=[], subject="s", date=datetime.now(timezone.utc),
             body_text="", body_html=html, size=0, headers={},
             message_id="<1@local>"
         )
@@ -106,7 +106,7 @@ class TestEmailMessage:
         """Test empty html returns empty string"""
         msg = EmailMessage(
             uid=1, uidvalidity=1, mailbox="INBOX", from_addr="a@b.com",
-            to_addrs=[], subject="s", date=datetime.utcnow(),
+            to_addrs=[], subject="s", date=datetime.now(timezone.utc),
             body_text="", body_html="", size=0, headers={},
             message_id="<1@local>"
         )

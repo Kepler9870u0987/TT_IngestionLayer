@@ -5,7 +5,7 @@ import pytest
 import json
 from unittest.mock import patch, MagicMock, mock_open
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -140,6 +140,13 @@ class TestAuthenticate:
         mock_creds.valid = False
         mock_creds.expired = True
         mock_creds.refresh_token = "refresh-tok"
+        # Make attributes JSON-serializable for save_credentials
+        mock_creds.token = "refreshed-token"
+        mock_creds.token_uri = "https://oauth2.googleapis.com/token"
+        mock_creds.client_id = "cid"
+        mock_creds.client_secret = "csecret"
+        mock_creds.scopes = ["https://mail.google.com/"]
+        mock_creds.expiry = None
         mock_creds_cls.from_authorized_user_file.return_value = mock_creds
 
         Path(oauth2.token_file).write_text('{"token": "x"}')
@@ -253,7 +260,7 @@ class TestIsTokenValid:
     def test_true_when_valid(self, oauth2):
         mock_creds = MagicMock()
         mock_creds.valid = True
-        mock_creds.expiry = datetime.utcnow() + timedelta(hours=1)
+        mock_creds.expiry = datetime.now(timezone.utc) + timedelta(hours=1)
         oauth2.credentials = mock_creds
         assert oauth2.is_token_valid() is True
 
@@ -261,7 +268,7 @@ class TestIsTokenValid:
         """Test returns False when token expires within 5 minutes"""
         mock_creds = MagicMock()
         mock_creds.valid = True
-        mock_creds.expiry = datetime.utcnow() + timedelta(minutes=2)
+        mock_creds.expiry = datetime.now(timezone.utc) + timedelta(minutes=2)
         oauth2.credentials = mock_creds
         assert oauth2.is_token_valid() is False
 
@@ -273,8 +280,8 @@ class TestRevokeToken:
         """revoke when no credentials should not raise"""
         oauth2.revoke_token()
 
-    @patch("src.auth.oauth2_gmail.requests")
-    def test_revoke_deletes_token_file(self, mock_requests, oauth2):
+    @patch("requests.post")
+    def test_revoke_deletes_token_file(self, mock_post, oauth2):
         """Test that revoke deletes the token file"""
         mock_creds = MagicMock()
         mock_creds.token = "tok"

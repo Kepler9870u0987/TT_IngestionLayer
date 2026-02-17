@@ -3,7 +3,7 @@ Producer state management using Redis.
 Tracks last processed UID and UIDVALIDITY per mailbox.
 """
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.common.redis_client import RedisClient
 from src.common.logging_config import get_logger
@@ -196,7 +196,7 @@ class ProducerStateManager:
         """
         try:
             key = self._make_key(mailbox, "last_poll")
-            timestamp = datetime.utcnow().isoformat() + "Z"
+            timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             self.redis.set(key, timestamp)
 
             logger.debug(f"Updated last poll time for {mailbox}: {timestamp}")

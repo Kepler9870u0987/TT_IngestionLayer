@@ -17,7 +17,7 @@ import argparse
 import threading
 import statistics
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 
 # Add project root to path
@@ -127,7 +127,7 @@ def generate_fake_email(index: int) -> Dict[str, str]:
         "from": f"sender_{index}@test.com",
         "to": "recipient@test.com",
         "subject": f"Load Test Email #{index}",
-        "date": datetime.utcnow().isoformat() + "Z",
+        "date": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "payload": json.dumps({
             "body_preview": f"This is test email body #{index}",
             "has_attachments": str(index % 10 == 0),
