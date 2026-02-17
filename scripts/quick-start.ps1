@@ -70,7 +70,7 @@ if ($DoSetup -eq "si") {
     }
 }
 
-Pause-Step
+Wait-Step
 
 # ═══════════════════════════════════════════════════════════
 # STEP 2: Configurazione OAuth2
@@ -107,7 +107,7 @@ if ($DoAuth -eq "si") {
     }
 }
 
-Pause-Step
+Wait-Step
 
 # ═══════════════════════════════════════════════════════════
 # STEP 3: Verifica Redis
@@ -134,7 +134,7 @@ try {
     }
 }
 
-Pause-Step
+Wait-Step
 
 # ═══════════════════════════════════════════════════════════
 # STEP 4: Test (opzionale)
@@ -153,7 +153,7 @@ if ($DoTest -eq "si") {
     }
 }
 
-Pause-Step
+Wait-Step
 
 # ═══════════════════════════════════════════════════════════
 # STEP 5: Avvio sistema

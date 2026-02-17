@@ -143,3 +143,4 @@ Write-Log "5. Ferma sistema: .\scripts\stop.ps1" "White"
 Write-Log ""
 Write-Log "Per test: .\scripts\test.ps1" "Cyan"
 Write-Log ""
+exit 0

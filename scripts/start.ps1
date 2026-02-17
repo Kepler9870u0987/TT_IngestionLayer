@@ -55,13 +55,13 @@ try {
 $ProducerPidFile = Join-Path $PidDir "producer.pid"
 $ProducerRunning = $false
 if (Test-Path $ProducerPidFile) {
-    $pid = Get-Content $ProducerPidFile
-    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    $procId = Get-Content $ProducerPidFile
+    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
     if ($proc) { $ProducerRunning = $true }
 }
 
 if ($ProducerRunning) {
-    Write-Log "Producer already running (PID $pid)"
+    Write-Log "Producer already running (PID $procId)"
 } else {
     Write-Log "Starting producer…"
     $pArgs = "producer.py $ProducerArgs".Trim()
@@ -78,13 +78,13 @@ if ($ProducerRunning) {
 $WorkerPidFile = Join-Path $PidDir "worker.pid"
 $WorkerRunning = $false
 if (Test-Path $WorkerPidFile) {
-    $pid = Get-Content $WorkerPidFile
-    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    $procId = Get-Content $WorkerPidFile
+    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
     if ($proc) { $WorkerRunning = $true }
 }
 
 if ($WorkerRunning) {
-    Write-Log "Worker already running (PID $pid)"
+    Write-Log "Worker already running (PID $procId)"
 } else {
     Write-Log "Starting worker…"
     $wArgs = "worker.py $WorkerArgs".Trim()
@@ -98,3 +98,4 @@ if ($WorkerRunning) {
 }
 
 Write-Log "Done.  Use scripts\stop.ps1 to stop."
+exit 0

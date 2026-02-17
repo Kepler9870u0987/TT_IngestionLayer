@@ -26,35 +26,35 @@ function Stop-Component {
         return
     }
 
-    $pid = [int](Get-Content $pidFile)
-    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    $procId = [int](Get-Content $pidFile)
+    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
 
     if (-not $proc) {
-        Write-Log "${Name}: process $pid not running (stale PID file)"
+        Write-Log "${Name}: process $procId not running (stale PID file)"
         Remove-Item $pidFile -Force
         return
     }
 
-    Write-Log "${Name}: stopping PID $pid…"
+    Write-Log "${Name}: stopping PID $procId…"
 
     # Send Ctrl+C equivalent (graceful)
     try {
-        Stop-Process -Id $pid -ErrorAction SilentlyContinue
+        Stop-Process -Id $procId -ErrorAction SilentlyContinue
     } catch {}
 
     # Wait for exit
     $waited = 0
     while ($waited -lt $Timeout) {
-        $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+        $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
         if (-not $proc) { break }
         Start-Sleep -Seconds 1
         $waited++
     }
 
-    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
     if ($proc) {
         Write-Log "${Name}: still running after ${Timeout}s – force killing"
-        Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
     } else {
         Write-Log "${Name}: stopped gracefully (${waited}s)"
     }
@@ -66,3 +66,4 @@ Stop-Component "producer"
 Stop-Component "worker"
 
 Write-Log "All processes stopped."
+exit 0
