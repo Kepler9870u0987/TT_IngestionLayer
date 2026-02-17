@@ -5,8 +5,10 @@ Loads configuration from environment variables with validation.
 from pathlib import Path
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, model_validator
 from typing import Optional
+
+from src.common.secrets import resolve_secret
 
 # Load .env file into os.environ so all nested BaseSettings pick up values
 _env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -17,8 +19,11 @@ class RedisSettings(BaseSettings):
     """Redis connection and stream configuration"""
     host: str = Field(default="localhost")
     port: int = Field(default=6379)
+    username: Optional[str] = Field(default=None)
     password: Optional[str] = Field(default=None)
     db: int = Field(default=0)
+    ssl: bool = Field(default=False)
+    ssl_ca_certs: Optional[str] = Field(default=None)
     stream_name: str = Field(default="email_ingestion_stream")
     max_stream_length: int = Field(default=10000)
 
@@ -39,10 +44,15 @@ class IMAPSettings(BaseSettings):
 
 class OAuth2Settings(BaseSettings):
     """OAuth2 Google authentication configuration"""
-    client_id: str
-    client_secret: str
+    client_id: str = Field(default="")
+    client_secret: str = Field(default="")
     redirect_uri: str = Field(default="http://localhost:8080")
     token_file: str = Field(default="tokens/gmail_token.json")
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if OAuth2 credentials are fully configured."""
+        return bool(self.client_id and self.client_secret)
 
     class Config:
         env_prefix = "GOOGLE_"
@@ -82,6 +92,10 @@ class MonitoringSettings(BaseSettings):
     """Monitoring and health check configuration"""
     metrics_port: int = Field(default=9090)
     health_check_port: int = Field(default=8080)
+    producer_metrics_port: int = Field(default=9090)
+    producer_health_port: int = Field(default=8080)
+    worker_metrics_port: int = Field(default=9091)
+    worker_health_port: int = Field(default=8081)
 
     class Config:
         env_prefix = ""
@@ -133,11 +147,15 @@ class Settings(BaseSettings):
     class Config:
         extra = "ignore"
 
+    @model_validator(mode="after")
+    def resolve_secrets(self) -> "Settings":
+        """Resolve file: and env: secret references for sensitive fields."""
+        if self.redis.password:
+            self.redis.password = resolve_secret(self.redis.password)
+        if self.oauth2.client_secret:
+            self.oauth2.client_secret = resolve_secret(self.oauth2.client_secret)
+        return self
+
 
 # Singleton instance - import this in other modules
-try:
-    settings = Settings()
-except Exception as e:
-    # During testing or initial setup, settings might not be fully configured
-    print(f"Warning: Could not load settings: {e}")
-    settings = None
+settings = Settings()

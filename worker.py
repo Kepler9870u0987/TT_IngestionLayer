@@ -74,8 +74,11 @@ class EmailWorker:
         self.redis = RedisClient(
             host=cfg.redis.host,
             port=cfg.redis.port,
+            username=cfg.redis.username,
             password=cfg.redis.password,
-            db=cfg.redis.db
+            db=cfg.redis.db,
+            ssl=cfg.redis.ssl,
+            ssl_ca_certs=cfg.redis.ssl_ca_certs
         )
         self.idempotency = create_idempotency_manager_from_config(
             self.redis,
@@ -275,12 +278,12 @@ class EmailWorker:
         )
         health_server = HealthServer(
             health_registry,
-            port=settings.monitoring.health_check_port
+            port=settings.monitoring.worker_health_port
         )
         health_server.start()
 
         # Setup Prometheus metrics server
-        start_metrics_server(port=settings.monitoring.metrics_port)
+        start_metrics_server(port=settings.monitoring.worker_metrics_port)
         metrics_updater = BackgroundMetricsUpdater(
             collector=get_metrics_collector(),
             redis_client=self.redis,

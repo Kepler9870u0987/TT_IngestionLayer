@@ -29,9 +29,12 @@ class RedisClient:
         self,
         host: str = "localhost",
         port: int = 6379,
+        username: Optional[str] = None,
         password: Optional[str] = None,
         db: int = 0,
-        max_connections: int = 20
+        max_connections: int = 20,
+        ssl: bool = False,
+        ssl_ca_certs: Optional[str] = None
     ):
         """
         Initialize Redis client with connection pool.
@@ -39,11 +42,14 @@ class RedisClient:
         Args:
             host: Redis server host
             port: Redis server port
+            username: Optional username for ACL authentication (Redis 6+)
             password: Optional password for authentication
             db: Database number
             max_connections: Maximum connections in pool
+            ssl: Enable SSL/TLS connection
+            ssl_ca_certs: Path to CA certificate file for SSL
         """
-        self.pool = ConnectionPool(
+        pool_kwargs = dict(
             host=host,
             port=port,
             password=password,
@@ -55,6 +61,14 @@ class RedisClient:
             socket_connect_timeout=5,
             socket_timeout=5
         )
+        if username:
+            pool_kwargs['username'] = username
+        if ssl:
+            pool_kwargs['connection_class'] = redis.connection.SSLConnection
+            if ssl_ca_certs:
+                pool_kwargs['ssl_ca_certs'] = ssl_ca_certs
+
+        self.pool = ConnectionPool(**pool_kwargs)
         self.client = redis.Redis(connection_pool=self.pool)
         logger.info(f"Redis client initialized: {host}:{port}, db={db}")
 
@@ -437,6 +451,9 @@ def create_redis_client_from_config(config) -> RedisClient:
     return RedisClient(
         host=config.redis.host,
         port=config.redis.port,
+        username=config.redis.username,
         password=config.redis.password,
-        db=config.redis.db
+        db=config.redis.db,
+        ssl=config.redis.ssl,
+        ssl_ca_certs=config.redis.ssl_ca_certs
     )

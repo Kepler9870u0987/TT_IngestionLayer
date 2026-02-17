@@ -69,6 +69,11 @@ class EmailProducer:
         self.redis_client = create_redis_client_from_config(settings)
         logger.info("✓ Redis client initialized")
 
+        if not settings.oauth2.is_configured:
+            raise OAuth2AuthenticationError(
+                "OAuth2 not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET "
+                "in .env file. See docs/OAUTH2_SETUP.md for instructions."
+            )
         self.oauth2 = create_oauth2_from_config(settings)
         logger.info("✓ OAuth2 manager initialized")
 
@@ -229,12 +234,12 @@ class EmailProducer:
             )
             health_server = HealthServer(
                 health_registry,
-                port=settings.monitoring.health_check_port
+                port=settings.monitoring.producer_health_port
             )
             health_server.start()
 
             # Setup Prometheus metrics server
-            start_metrics_server(port=settings.monitoring.metrics_port)
+            start_metrics_server(port=settings.monitoring.producer_metrics_port)
             metrics_updater = BackgroundMetricsUpdater(
                 collector=get_metrics_collector(),
                 redis_client=self.redis_client,
@@ -416,6 +421,12 @@ def main():
     if args.auth_setup:
         logger.info("Running OAuth2 setup...")
         try:
+            if not settings.oauth2.is_configured:
+                logger.error(
+                    "OAuth2 not configured. Set GOOGLE_CLIENT_ID and "
+                    "GOOGLE_CLIENT_SECRET in .env file."
+                )
+                return 1
             oauth = create_oauth2_from_config(settings)
             oauth.authenticate(force_reauth=True)
             logger.info("✓ OAuth2 setup complete!")

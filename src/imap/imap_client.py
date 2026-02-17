@@ -61,7 +61,7 @@ class EmailMessage:
             "to": self.to_addrs,
             "subject": self.subject,
             "date": self.date.isoformat() if self.date else None,
-            "body_text": self.body_text[2000] if len(self.body_text) > 2000 else self.body_text,
+            "body_text": self.body_text[:2000] if len(self.body_text) > 2000 else self.body_text,
             "body_html_preview": self.body_html[:500] if self.body_html else "",
             "size": self.size,
             "headers": self.headers,
