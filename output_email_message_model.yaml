@@ -1,0 +1,65 @@
+# Modello dati di output del Ingestion Layer
+# Ogni campo rappresenta un attributo estratto da una mail elaborata
+EmailMessage:
+  type: object
+  properties:
+    uid:
+      type: integer
+      description: Identificativo univoco del messaggio nella mailbox IMAP
+    uidvalidity:
+      type: integer
+      description: Versione UID della mailbox (per coerenza IMAP)
+    mailbox:
+      type: string
+      description: Nome della cartella da cui è stata estratta la mail
+    from:
+      type: string
+      description: Indirizzo email del mittente
+    to:
+      type: 
+        - array
+        - string
+      items:
+        type: string
+      description: Lista degli indirizzi destinatari
+    subject:
+      type: string
+      description: Oggetto della mail
+    date:
+      type: string
+      format: date-time
+      description: Data di invio/ricezione (ISO 8601)
+    body_text:
+      type: string
+      description: Corpo della mail in formato testo (max 2000 caratteri)
+    body_html_preview:
+      type: string
+      description: Anteprima corpo HTML (max 500 caratteri)
+    size:
+      type: integer
+      description: Dimensione totale del messaggio in byte
+    headers:
+      type: object
+      additionalProperties:
+        type: string
+      description: Tutti gli header della mail come dizionario
+    message_id:
+      type: string
+      description: Message-ID univoco della mail
+    fetched_at:
+      type: string
+      format: date-time
+      description: Timestamp di estrazione (UTC)
+  required:
+    - uid
+    - uidvalidity
+    - mailbox
+    - from
+    - to
+    - subject
+    - date
+    - body_text
+    - size
+    - headers
+    - message_id
+    - fetched_at
